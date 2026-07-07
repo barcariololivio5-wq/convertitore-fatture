@@ -4,8 +4,10 @@ from google.genai import types
 from PIL import Image
 import json
 from pydantic import BaseModel
+import pandas as pd
+import io
 
-# Definiamo la struttura dei dati che l'IA deve estrarre
+# Struttura dei dati per l'IA
 class DatiContabili(BaseModel):
     fornitore: str
     paese_provenienza: str
@@ -17,10 +19,9 @@ class DatiContabili(BaseModel):
 st.set_page_config(page_title="Convertitore Fatture Estere", page_icon="📊", layout="centered")
 
 st.title("📊 Convertitore Automatico Fatture Estere")
-st.write("Trascina la tua fattura estera (PDF o Immagine) e ottieni i dati pronti per la contabilità italiana.")
+st.write("Trascina la tua fattura estera (PDF o Immagine) e scarica il file Excel pronto per la contabilità.")
 st.write("---")
 
-# Barra laterale per inserire la chiave API di Google
 api_key = st.sidebar.text_input("Inserisci la tua Gemini API Key", type="password")
 
 if not api_key:
@@ -49,10 +50,27 @@ else:
                     risultato = json.loads(response.text)
                     st.success("Conversione completata!")
                     
+                    # 1. Mostra i dati puliti a schermo
                     st.write("### 📋 Dati Estratti:")
                     st.json(risultato)
                     
-                    st.button("📥 Scarica file Excel (Pronto nella prossima versione)")
+                    # 2. Converti i dati in un formato leggibile da Excel (Tabella)
+                    df = pd.DataFrame([risultato])
+                    
+                    # 3. Crea il file Excel temporaneo in memoria
+                    buffer = io.BytesIO()
+                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                        df.to_excel(writer, index=False, sheet_name='Dati Contabili')
+                    buffer.seek(0)
+                    
+                    # 4. Attiva il bottone di download reale per l'utente
+                    st.write("---")
+                    st.download_button(
+                        label="📥 Scarica file Excel",
+                        data=buffer,
+                        file_name="fattura_estera_convertita.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
                     
                 except Exception as e:
                     st.error(f"Errore durante l'analisi: {e}")
