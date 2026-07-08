@@ -47,8 +47,7 @@ def genera_xml_autofattura(dati, imponibile_euro, is_forfettario):
     # Intestazione
     header = ET.SubElement(root, "FatturaElettronicaHeader")
     dati_trasmissione = ET.SubElement(header, "DatiTrasmissione")
-    id_trasmittente = ET.SubElement(dati_trasmissione, "IdTrasmittente")
-    ET.SubElement(id_trasmittente, "IdPaese").text = "IT"
+    id_trasmittente = ET.SubElement(dati_trasmissione, "IdPaese").text = "IT"
     ET.SubElement(id_trasmittente, "IdCodice").text = "00000000000" # Da personalizzare con P.IVA Utente
     ET.SubElement(dati_trasmissione, "ProgressivoInvio").text = "00001"
     ET.SubElement(dati_trasmissione, "FormatoTrasmissione").text = "FPR12"
@@ -137,8 +136,8 @@ is_forfettario = st.sidebar.checkbox("🏢 Gestione Regime Forfettario", value=F
 conto_fornitore_estero = st.sidebar.text_input("Mastro Fornitori (AVERE)", "450101")
 nome_cliente = st.sidebar.text_input("Nome Cliente Corrente (per Obsidian)", "Rossi_SRL")
 
-# IL TUO PERCORSO DEFINITIVO AGGIORNATO CON HUB_FISCALE!
-percorso_obsidian = st.sidebar.text_input("Percorso Cartella Hub_Fiscale del Mac", "/Users/liviobarcariolo/Desktop/Convertit/Hub_Fiscale")
+# IL TUO PERCORSO REALE E DEFINITIVO CORRETTO!
+percorso_obsidian = st.sidebar.text_input("Percorso Cartella Hub_Fiscale del Mac", "/Users/liviobarcariolo/Desktop/Convertitore_Fatture_SaaS/Hub_Fiscale")
 
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
@@ -204,14 +203,18 @@ else:
                         
                         imponibile_in_euro = round(importo_orig * tasso_cambio_bce, 2)
                         
-                        # --- INIEZIONE IN REAL-TIME NELL'OBSIDIAN DEL MAC ---
+                        # --- INIEZIONE NATURALE IN OBSIDIAN (CON CREAZIONE AUTOMATICA) ---
                         if percorso_obsidian and os.path.exists(percorso_obsidian):
                             cartella_target = os.path.join(percorso_obsidian, "300_Sessioni")
-                            if os.path.exists(cartella_target):
-                                nome_nota_sessione = f"Sessione_{data_doc}_{risultato['fornitore'].replace(' ', '_')}.md"
-                                percorso_file_sessione = os.path.join(cartella_target, nome_nota_sessione)
+                            
+                            # Se sul Mac manca la cartella 300_Sessioni, la creiamo noi via codice!
+                            if not os.path.exists(cartella_target):
+                                os.makedirs(cartella_target)
                                 
-                                contenuto_markdown = f"""---
+                            nome_nota_sessione = f"Sessione_{data_doc}_{risultato['fornitore'].replace(' ', '_')}.md"
+                            percorso_file_sessione = os.path.join(cartella_target, nome_nota_sessione)
+                            
+                            contenuto_markdown = f"""---
 tipo: registrazione_fiscale
 fornitore: "{risultato['fornitore']}"
 paese: "{risultato['paese_provenienza']}"
@@ -232,8 +235,8 @@ Il cliente [[{nome_cliente}]] ha ricevuto un documento da [[{risultato['fornitor
 ---
 *Generato in automatico dall'ecosistema TaxTech.*
 """
-                                with open(percorso_file_sessione, "w", encoding="utf-8") as f:
-                                    f.write(contenuto_markdown)
+                            with open(percorso_file_sessione, "w", encoding="utf-8") as f:
+                                f.write(contenuto_markdown)
                         
                         risultato["File"] = file.name
                         risultato["Imponibile (€)"] = imponibile_in_euro
