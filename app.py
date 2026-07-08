@@ -8,6 +8,7 @@ import io
 import requests
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
+import os  # Estensione nativa per interagire con le cartelle del Mac
 
 # Schema dati per l'estrazione intelligente
 class DatiFatturaEstera(BaseModel):
@@ -110,10 +111,12 @@ st.title("🚀 Suite TaxTech: Autofatture SDI e Validazione in Doppio Cieco")
 st.write("L'unico sistema contabile dotato di algoritmo di controllo incrociato anti-allucinazione e generazione nativa dei file XML per lo SDI.")
 st.write("---")
 
-# Sidebar
-st.sidebar.title("⚙️ Parametri Fiscali")
+# --- UNIFICAZIONE BARRA LATERALE CORRETTA ---
+st.sidebar.title("⚙️ Parametri Fiscali & Mac")
 is_forfettario = st.sidebar.checkbox("🏢 Gestione Regime Forfettario", value=False)
 conto_fornitore_estero = st.sidebar.text_input("Mastro Fornitori (AVERE)", "450101")
+nome_cliente = st.sidebar.text_input("Nome Cliente Corrente (per Obsidian)", "Rossi_SRL")
+percorso_obsidian = st.sidebar.text_input("Percorso Cartella Hub_Fiscale del Mac", "/Users/IL_TUO_NOME/Documents/IlTuoVault/Hub_Fiscale")
 
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
@@ -132,9 +135,8 @@ else:
     )
     
     if files_caricati:
-        if st.button("🧠 Avvia Elaborazione Massiva & Generazione XML"):
+        if st.button("🧠 Avvia Elaborazione Massiva & Sincronizza Obsidian"):
             lista_registro = []
-            righe_prima_nota = []
             file_zip_buffer = io.BytesIO()
             
             import zipfile
@@ -153,37 +155,23 @@ else:
                         prompt = "Esegui analisi contabile per il mercato italiano e rispondi rigorosamente seguendo lo schema JSON."
                         
                         # --- MOTORE DOPPIO CIECO ---
-                        # Istanza 1 (Veloce e Standard)
                         res1 = client.models.generate_content(
-                            model='gemini-2.5-flash',
-                            contents=[part, prompt],
-                            config=types.GenerateContentConfig(
-                                response_mime_type="application/json", response_schema=DatiFatturaEstera,
-                                temperature=0.1
-                            ),
+                            model='gemini-2.5-flash', contents=[part, prompt],
+                            config=types.GenerateContentConfig(response_mime_type="application/json", response_schema=DatiFatturaEstera, temperature=0.1),
                         )
                         dati1 = json.loads(res1.text)
                         
-                        # Istanza 2 (Controllo ad alta precisione)
                         res2 = client.models.generate_content(
-                            model='gemini-2.5-flash',
-                            contents=[part, prompt],
-                            config=types.GenerateContentConfig(
-                                response_mime_type="application/json", response_schema=DatiFatturaEstera,
-                                temperature=0.3
-                            ),
+                            model='gemini-2.5-flash', contents=[part, prompt],
+                            config=types.GenerateContentConfig(response_mime_type="application/json", response_schema=DatiFatturaEstera, temperature=0.3),
                         )
                         dati2 = json.loads(res2.text)
                         
-                        # Controllo di coerenza dell'algoritmo
                         is_verified = (dati1["imponibile_valuta_originale"] == dati2["imponibile_valuta_originale"] and 
                                        dati1["codice_autofattura_sdi"] == dati2["codice_autofattura_sdi"])
                         stato_validazione = "✅ Verificato (100%)" if is_verified else "⚠️ Errore / Discrepanza Riscontrata"
                         
-                        # Usiamo l'estrazione stabile
                         risultato = dati1
-                        
-                        # Cambio Ufficiale BCE
                         data_doc = risultato["data_documento"]
                         valuta_orig = risultato["valuta_originale"].upper()
                         importo_orig = risultato["imponibile_valuta_originale"]
@@ -200,13 +188,42 @@ else:
                         
                         imponibile_in_euro = round(importo_orig * tasso_cambio_bce, 2)
                         
-                        # Arricchimento registro
+                        # --- INIEZIONE IN REAL-TIME NELL'OBSIDIAN DEL MAC ---
+                        if percorso_obsidian and os.path.exists(percorso_obsidian):
+                            cartella_target = os.path.join(percorso_obsidian, "300_Sessioni")
+                            if os.path.exists(cartella_target):
+                                nome_nota_sessione = f"Sessione_{data_doc}_{risultato['fornitore'].replace(' ', '_')}.md"
+                                percorso_file_sessione = os.path.join(cartella_target, nome_nota_sessione)
+                                
+                                contenuto_markdown = f"""---
+tipo: registrazione_fiscale
+fornitore: "{risultato['fornitore']}"
+paese: "{risultato['paese_provenienza']}"
+importo_euro: {imponibile_in_euro}
+codice_sdi: "{risultato['codice_autofattura_sdi']}"
+data_doc: {data_doc}
+---
+# Registrazione Operazione: {risultato['fornitore']}
+
+Il cliente [[{nome_cliente}]] ha ricevuto un documento da [[{risultato['fornitore']}]] per la categoria **{risultato['categoria_costo_suggerita']}**.
+
+### 📊 Dati Finanziari
+- **Importo in Valuta:** {importo_orig} {valuta_orig}
+- **Tasso Cambio BCE:** {tasso_cambio_bce}
+- **Importo Convertito:** **€ {imponibile_in_euro}**
+- **Codice Adempimento:** [[{risultato['codice_autofattura_sdi']}]]
+
+---
+*Generato in automatico dall'ecosistema TaxTech.*
+"""
+                                with open(percorso_file_sessione, "w", encoding="utf-8") as f:
+                                    f.write(contenuto_markdown)
+                        
                         risultato["File"] = file.name
                         risultato["Imponibile (€)"] = imponibile_in_euro
                         risultato["Controllo AI"] = stato_validazione
                         lista_registro.append(risultato)
                         
-                        # GENERAZIONE E SCRITTURA FILE XML AUTOFATTURA
                         xml_contenuto = genera_xml_autofattura(risultato, imponibile_in_euro, is_forfettario)
                         nome_file_xml = f"IT00000000000_{risultato['codice_autofattura_sdi']}_{index:05d}.xml"
                         zip_file.writestr(nome_file_xml, xml_contenuto)
@@ -219,16 +236,16 @@ else:
                 status_text.empty()
                 
                 if lista_registro:
-                    st.success("🎯 Tutti i documenti sono stati elaborati, verificati e convertiti in XML!")
+                    st.success("🎯 Tutti i documenti sono stati elaborati, verificati e sincronizzati in Obsidian!")
                     
-                    # Mostra la tabella di controllo
                     df_reg = pd.DataFrame(lista_registro)
                     st.write("### 📊 Cruscotto di Controllo (Doppio Cieco)")
-                    st.dataframe(df_reg[["File", "fornitore", "data_documento", "valuta_original", "imponibile_valuta_originale", "Imponibile (€)", "codice_autofattura_sdi", "Controllo AI"]].rename(columns={
-                        "fornitore": "Fornitore", "data_documento": "Data", "valuta_original": "Valuta Orig.", "imponibile_valuta_originale": "Importo Orig.", "codice_autofattura_sdi": "Codice SDI"
+                    
+                    # Corretto l'allineamento della colonna valuta_originale per evitare bug grafici
+                    st.dataframe(df_reg[["File", "fornitore", "data_documento", "valuta_originale", "imponibile_valuta_originale", "Imponibile (€)", "codice_autofattura_sdi", "Controllo AI"]].rename(columns={
+                        "fornitore": "Fornitore", "data_documento": "Data", "valuta_originale": "Valuta Orig.", "imponibile_valuta_originale": "Importo Orig.", "codice_autofattura_sdi": "Codice SDI"
                     }), use_container_width=True)
                     
-                    # Preparazione del download del pacchetto ZIP contenente le fatture XML
                     zip_file.close()
                     file_zip_buffer.seek(0)
                     
