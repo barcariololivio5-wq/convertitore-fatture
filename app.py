@@ -137,8 +137,8 @@ is_forfettario = st.sidebar.checkbox("🏢 Gestione Regime Forfettario", value=F
 conto_fornitore_estero = st.sidebar.text_input("Mastro Fornitori (AVERE)", "450101")
 nome_cliente = st.sidebar.text_input("Nome Cliente Corrente (per Obsidian)", "Rossi_SRL")
 
-# ECCO LA TUA RIGA AGGIORNATA CON IL PERCORSO CORRETTO!
-percorso_obsidian = st.sidebar.text_input("Percorso Cartella Hub_Fiscale del Mac", "/Users/liviobarcariolo/Desktop/Convertit")
+# IL TUO PERCORSO DEFINITIVO AGGIORNATO CON HUB_FISCALE!
+percorso_obsidian = st.sidebar.text_input("Percorso Cartella Hub_Fiscale del Mac", "/Users/liviobarcariolo/Desktop/Convertit/Hub_Fiscale")
 
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
