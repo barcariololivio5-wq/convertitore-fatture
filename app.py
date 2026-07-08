@@ -8,8 +8,27 @@ import io
 import requests
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
-import os
 import time
+import zipfile
+
+# --- CONFIGURAZIONE WEBHOOK PER IL TUO CERVELLO OBSIDIAN ---
+URL_WEBHOOK_CERVELLO = "https://hook.eu2.make.com/tuo-codice-webhook-personale"
+
+def invia_al_cervello_centralizzato(dati, nome_cliente, imponibile_euro):
+    payload = {
+        "cliente_studio": nome_cliente,
+        "fornitore": dati.get("fornitore"),
+        "identificativo_fiscale_fornitore": dati.get("identificativo_fiscale_fornitore"),
+        "paese_provenienza": dati.get("paese_provenienza"),
+        "categoria_costo_suggerita": dati.get("categoria_costo_suggerita"),
+        "codice_autofattura_sdi": dati.get("codice_autofattura_sdi"),
+        "imponibile_euro": imponibile_euro,
+        "data_documento": dati.get("data_documento")
+    }
+    try:
+        requests.post(URL_WEBHOOK_CERVELLO, json=payload, timeout=5)
+    except Exception:
+        pass
 
 # Schema dati per l'estrazione intelligente
 class DatiFatturaEstera(BaseModel):
@@ -23,35 +42,6 @@ class DatiFatturaEstera(BaseModel):
     imponibile_valuta_originale: float = Field(description="Importo imponibile totale")
     categoria_costo_suggerita: str = Field(description="Categoria tra: 'Software SaaS', 'Hosting/Cloud', 'Pubblicità/Marketing', 'Beni strumentali', 'Consulenza'")
     codice_autofattura_sdi: str = Field(description="Codice SDI richiesto: 'TD17' (servizi esteri), 'TD18' (beni UE), 'TD19' (beni ex art.17 c.2).")
-
-# --- FUNZIONE DI LETTURA AUTOMATICA DEL "CERVELLO" DI OBSIDIAN ---
-def leggi_cervello_obsidian(percorso_vault):
-    regole = []
-    if not percorso_vault or not os.path.exists(percorso_vault):
-        return regole
-    
-    cartella_cervello = os.path.join(percorso_vault, "000_Cervello_AI")
-    if os.path.exists(cartella_cervello):
-        for file_md in os.listdir(cartella_cervello):
-            if file_md.endswith(".md"):
-                percorso_file = os.path.join(cartella_cervello, file_md)
-                try:
-                    with open(percorso_file, "r", encoding="utf-8") as f:
-                        contenuto = f.read()
-                        # Estrazione primitiva del Frontmatter YAML per recuperare le vecchie regole memorizzate
-                        if contenuto.startswith("---"):
-                            parti = contenuto.split("---")
-                            lines = parti[1].strip().split("\n")
-                            dati_regola = {}
-                            for line in lines:
-                                if ":" in line:
-                                    k, v = line.split(":", 1)
-                                    dati_regola[k.strip()] = v.strip().replace('"', '')
-                            if "fornitore" in dati_regola:
-                                regole.append(dati_regola)
-                except:
-                    pass
-    return regole
 
 # Funzione ausiliaria per generare l'XML standard FatturaPA
 def genera_xml_autofattura(dati, imponibile_euro, is_forfettario):
@@ -78,7 +68,7 @@ def genera_xml_autofattura(dati, imponibile_euro, is_forfettario):
     ET.SubElement(id_trasmittente, "IdCodice").text = "00000000000"
     ET.SubElement(dati_trasmissione, "ProgressivoInvio").text = "00001"
     ET.SubElement(dati_trasmissione, "FormatoTrasmissione").text = "FPR12"
-    ET.SubElement(dati_trasmissione, "CodiceDestinatario").text = "0000000"
+    ET.SubElement(dati_destinatario := ET.SubElement(dati_trasmissione, "CodiceDestinatario")).text = "0000000"
     
     cedente = ET.SubElement(header, "CedentePrestatore")
     dati_anagrafici_c = ET.SubElement(cedente, "DatiAnagrafici")
@@ -125,7 +115,6 @@ def genera_xml_autofattura(dati, imponibile_euro, is_forfettario):
     parsed_xml = minidom.parseString(xml_string)
     return parsed_xml.toprettyxml(indent="  ")
 
-# Funzione Anti-Blocco (Retry)
 def chiama_gemini_con_retry(client, part, prompt, temp, max_tentativi=3):
     for tentativo in range(max_tentativi):
         try:
@@ -140,28 +129,36 @@ def chiama_gemini_con_retry(client, part, prompt, temp, max_tentativi=3):
                     time.sleep(5)
                     continue
                 else:
-                    raise Exception("I server di Google sono troppo carichi in questo momento. Riprova tra qualche minuto.")
+                    raise Exception("I server di Google sono momentaneamente sovraccarichi. Riprova.")
             else:
                 raise e
 
 st.set_page_config(page_title="Piattaforma TaxTech AI", page_icon="🚀", layout="wide")
 
-st.title("🚀 Ecosistema TaxTech: Obsidian Co-Pilot & Auto-Apprendimento")
-st.write("L'interfaccia Streamlit ora legge e scrive direttamente dentro la cartella di Obsidian, usandolo come memoria centrale.")
+st.title("🚀 Ecosistema TaxTech: Conversione Cloud")
+st.write("Carica i documenti esteri per la generazione automatica dei file XML conformi per lo SDI.")
 st.write("---")
 
-st.sidebar.title("⚙️ Connessione Real-Time Mac")
+st.sidebar.title("⚙️ Dati Cliente")
 is_forfettario = st.sidebar.checkbox("🏢 Gestione Regime Forfettario", value=False)
-conto_fornitore_estero = st.sidebar.text_input("Mastro Fornitori (AVERE)", "450101")
-nome_cliente = st.sidebar.text_input("Nome Cliente Corrente (per Obsidian)", "Rossi_SRL")
-percorso_obsidian = st.sidebar.text_input("Percorso Hub_Fiscale Mac", "/Users/liviobarcariolo/Desktop/Convertitore_Fatture_SaaS/Hub_Fiscale")
+nome_cliente = st.sidebar.text_input("Ragione Sociale Cliente", "Cliente_SRL")
 
-# Analisi in tempo reale di quello che Obsidian ha memorizzato nel suo "Vault"
-regole_cervello = leggi_cervello_obsidian(percorso_obsidian)
-if regole_cervello:
-    st.sidebar.success(f"🧠 Connesso a Obsidian! Recuperate **{len(regole_cervello)} regole neurali** dal tuo Vault.")
-else:
-    st.sidebar.warning("⚠️ Nessuna regola trovata in `000_Cervello_AI`. Verrà creata automaticamente al primo salvataggio.")
+# --- ⚖️ SEZIONE TUTELA LEGALE E PRIVACY COMPLIANCE ---
+st.write("### ⚖️ Note Legali, Limitazione di Responsabilità e Privacy")
+with st.expander("Clicca qui per leggere l'Informativa GDPR (Ex Art. 13) e i Termini di Esonero Responsabilità (Ex Artt. 1229 e 2236 C.C.)"):
+    st.markdown("""
+    **1. INFORMATIVA PRIVACY (Ex Art. 13 Regolamento UE 2016/679 - GDPR)**
+    I dati estratti dai documenti caricati (inclusi dati fiscali, anagrafici ed economici) sono trattati in modalità transitoria unicamente per l'esecuzione tecnica della conversione del file. Il trattamento trova base giuridica nel consenso espresso dell'utente (**Ex Art. 6, par. 1, lett. a, GDPR**). I dati vengono instradati tramite canali API protetti e crittografati e **NON** vengono in alcun modo memorizzati o utilizzati per l'addestramento di intelligenze artificiali esterne. I dati di sintesi dell'operazione contabile vengono trasmessi esclusivamente al sistema di monitoraggio centrale dello Studio Professionale titolare.
+    
+    **2. CLAUSOLA DI MANLEVA E LIMITAZIONE DI RESPONSABILITÀ (Ex Art. 1229 Codice Civile)**
+    Il presente applicativo fornisce elaborazioni statistiche e predittive automatizzate tramite modelli di Intelligenza Artificiale. Ai sensi e per gli effetti dell'**Art. 1229 del Codice Civile**, il fornitore dell'infrastruttura informatica, gli sviluppatori e lo Studio Professionale non si assumono alcuna responsabilità per danni diretti, indiretti, sanzioni amministrative, accertamenti fiscali o rigetti formali causati da errori tecnici, imprecisioni, omissioni o 'allucinazioni' dell'algoritmo nella compilazione dell'XML. 
+    
+    **3. PRESTAZIONE DI MEZZI E TASSACOLO OBBLIGO DI VERIFICA (Ex Art. 2236 Codice Civile)**
+    L'utente prende atto che il servizio si configura come fornitura di meri mezzi informatici e non di risultato. L'attribuzione della natura IVA, delle aliquote e della codifica del documento (es. TD17, TD18, TD19) è un suggerimento provvisorio. Resta in capo all'utente l'**obbligo tassativo di revisionare, controllare e validare manualmente** la correttezza del file XML generato prima dell'invio formale al Sistema di Interscambio (SDI) dell'Agenzia delle Entrate. Nei casi di prestazioni che implicano la soluzione di problemi tecnici di speciale difficoltà, la responsabilità è limitata ai soli casi di dolo o colpa grave ai sensi dell'**Art. 2236 del Codice Civile**.
+    """)
+
+# Checkbox vincolante
+accettazione_legale = st.checkbox("Dichiaro di aver letto e compreso l'informativa, accetto incondizionatamente i termini di manleva (Artt. 1229 e 2236 C.C.) e presto il consenso al trattamento dei dati personali (Art. 13 GDPR).")
 
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
@@ -176,28 +173,19 @@ else:
     files_caricati = st.file_uploader("Carica documenti (PDF o Immagini)", type=["png", "jpg", "jpeg", "pdf"], accept_multiple_files=True)
     
     if files_caricati:
-        if st.button("🚀 Sincronizza ed Elabora con Cervello Obsidian"):
+        # Il pulsante si attiva (disabled=False) SOLO se la spunta legale è True
+        if st.button("🚀 Converti in XML e Invia a Studio", disabled=not accettazione_legale):
             lista_registro = []
             file_zip_buffer = io.BytesIO()
             
-            import zipfile
             with zipfile.ZipFile(file_zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
-                # --- INIEZIONE DELLE REGOLE DI OBSIDIAN NEL PROMPT AI ---
-                contesto_cervello = ""
-                if regole_cervello:
-                    contesto_cervello = "\n\nIMPORTANTE: Basati rigorosamente su queste regole storiche estratte direttamente dalla memoria del mio Obsidian Vault:\n"
-                    for r in regole_cervello:
-                        contesto_cervello += f"- Fornitore: '{r.get('fornitore')}' -> Categoria: '{r.get('categoria_costo_suggerita')}', Codice SDI: '{r.get('codice_autofattura_sdi')}'\n"
-
-                prompt_base = "Esegui analisi contabile per il mercato italiano e rispondi rigorosamente seguendo lo schema JSON."
-                prompt_finale = prompt_base + contesto_cervello
+                prompt_finale = "Esegui analisi contabile per il mercato italiano e rispondi rigorosamente seguendo lo schema JSON."
                 
                 for index, file in enumerate(files_caricati):
-                    status_text.write(f"🔄 Interrogazione AI e allineamento cervello per: **{file.name}**...")
+                    status_text.write(f"🔄 Elaborazione AI per: **{file.name}**...")
                     
                     try:
                         file_bytes = file.read()
@@ -212,7 +200,7 @@ else:
                         
                         is_verified = (dati1["imponibile_valuta_originale"] == dati2["imponibile_valuta_originale"] and 
                                        dati1["codice_autofattura_sdi"] == dati2["codice_autofattura_sdi"])
-                        stato_validazione = "✅ Verificato (100%)" if is_verified else "⚠️ Errore / Discrepanza Riscontrata"
+                        stato_validazione = "✅ Verificato" if is_verified else "⚠️ Discrepanza"
                         
                         risultato = dati1.copy()
                         data_doc = risultato["data_documento"]
@@ -231,55 +219,13 @@ else:
                         
                         imponibile_in_euro = round(importo_orig * tasso_cambio_bce, 2)
                         
-                        # XML
+                        # Generazione XML dello SDI
                         xml_contenuto = genera_xml_autofattura(risultato, imponibile_in_euro, is_forfettario)
                         nome_file_xml = f"Fatture_XML/IT00000000000_{risultato['codice_autofattura_sdi']}_{index:05d}.xml"
                         zip_file.writestr(nome_file_xml, xml_contenuto)
                         
-                        # --- NOTA DI SESSIONE PER OBSIDIAN ---
-                        nome_fornitore_pulito = risultato['fornitore'].replace(' ', '_').replace('/', '_')
-                        nome_nota_sessione = f"Sessione_{data_doc}_{nome_fornitore_pulito}.md"
-                        contenuto_markdown = f"""---
-tipo: registrazione_fiscale
-fornitore: "{risultato['fornitore']}"
-paese: "{risultato['paese_provenienza']}"
-importo_euro: {imponibile_in_euro}
-codice_sdi: "{risultato['codice_autofattura_sdi']}"
-data_doc: {data_doc}
----
-# Registrazione Operazione: {risultato['fornitore']}
-Il cliente [[{nome_cliente}]] ha ricevuto un documento da [[{risultato['fornitore']}]] per la categoria **{risultato['categoria_costo_suggerita']}**.
-
-Regola neurale collegata: [[Regola_{nome_fornitore_pulito}]]
-"""
-                        zip_file.writestr(f"300_Sessioni/{nome_nota_sessione}", contenuto_markdown)
-                        
-                        # --- AGGIORNAMENTO DINAMICO DELLA MEMORIA DI OBSIDIAN (`000_Cervello_AI`) ---
-                        contenuto_regola_cervello = f"""---
-tipo: regola_apprendimento_ai
-fornitore: "{risultato['fornitore']}"
-paese_provenienza: "{risultato['paese_provenienza']}"
-categoria_costo_suggerita: "{risultato['categoria_costo_suggerita']}"
-codice_autofattura_sdi: "{risultato['codice_autofattura_sdi']}"
----
-# Regola di Apprendimento Automatica: {risultato['fornitore']}
-Questa nota funge da memoria per il modello AI. Ogni modifica manuale effettuata qui dentro cambierà il comportamento dell'algoritmo alla prossima conversione.
-"""
-                        zip_file.writestr(f"000_Cervello_AI/Regola_{nome_fornitore_pulito}.md", contenuto_regola_cervello)
-                        
-                        # Scrittura fisica diretta se l'app è eseguita localmente sul Mac
-                        if percorso_obsidian and os.path.exists(percorso_obsidian):
-                            # Salva la sessione
-                            c_sessioni = os.path.join(percorso_obsidian, "300_Sessioni")
-                            os.makedirs(c_sessioni, exist_ok=True)
-                            with open(os.path.join(c_sessioni, nome_nota_sessione), "w", encoding="utf-8") as f:
-                                f.write(contenuto_markdown)
-                                
-                            # Salva/Aggiorna la regola nel cervello
-                            c_cervello = os.path.join(percorso_obsidian, "000_Cervello_AI")
-                            os.makedirs(c_cervello, exist_ok=True)
-                            with open(os.path.join(c_cervello, f"Regola_{nome_fornitore_pulito}.md"), "w", encoding="utf-8") as f:
-                                f.write(contenuto_regola_cervello)
+                        # Invio silente al tuo Obsidian centralizzato via Webhook
+                        invia_al_cervello_centralizzato(risultato, nome_cliente, imponibile_in_euro)
                         
                         risultato["File"] = file.name
                         risultato["Imponibile (€)"] = imponibile_in_euro
@@ -294,7 +240,7 @@ Questa nota funge da memoria per il modello AI. Ogni modifica manuale effettuata
                 status_text.empty()
                 
                 if lista_registro:
-                    st.success("🎯 Sincronizzazione completata con il cervello di Obsidian!")
+                    st.success("🎯 Elaborazione completata! XML pronti e record inviati allo Studio.")
                     df_reg = pd.DataFrame(lista_registro)
                     st.dataframe(df_reg[["File", "fornitore", "data_documento", "Imponibile (€)", "codice_autofattura_sdi", "Controllo AI"]], use_container_width=True)
                     
@@ -302,8 +248,8 @@ Questa nota funge da memoria per il modello AI. Ogni modifica manuale effettuata
                     file_zip_buffer.seek(0)
                     
                     st.download_button(
-                        label="🚀 SCARICA AGGIORNAMENTO COMPLETO PER IL VAULT OBSIDIAN & SDI",
+                        label="🚀 SCARICA PACCHETTO XML PER LO SDI",
                         data=file_zip_buffer,
-                        file_name="aggiornamento_hub_fiscale.zip",
+                        file_name="autofatture_sdi.zip",
                         mime="application/zip"
                     )
