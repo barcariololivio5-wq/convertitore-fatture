@@ -9,6 +9,7 @@ import requests
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 import os  # Estensione nativa per interagire con le cartelle del Mac
+import time # Aggiunto per gestire i tempi di attesa dell'errore 503
 
 # Schema dati per l'estrazione intelligente
 class DatiFatturaEstera(BaseModel):
@@ -104,6 +105,25 @@ def genera_xml_autofattura(dati, imponibile_euro, is_forfettario):
     parsed_xml = minidom.parseString(xml_string)
     return parsed_xml.toprettyxml(indent="  ")
 
+# Funzione Anti-Blocco (Retry) per l'Intelligenza Artificiale
+def chiama_gemini_con_retry(client, part, prompt, temp, max_tentativi=3):
+    for tentativo in range(max_tentativi):
+        try:
+            risposta = client.models.generate_content(
+                model='gemini-2.5-flash', contents=[part, prompt],
+                config=types.GenerateContentConfig(response_mime_type="application/json", response_schema=DatiFatturaEstera, temperature=temp),
+            )
+            return risposta
+        except Exception as e:
+            if "503" in str(e) or "UNAVAILABLE" in str(e):
+                if tentativo < max_tentativi - 1:
+                    time.sleep(5) # Aspetta 5 secondi prima di riprovare
+                    continue
+                else:
+                    raise Exception("I server di Google sono troppo carichi in questo momento. Riprova tra qualche minuto.")
+            else:
+                raise e # Se è un altro errore, lo mostra normalmente
+
 # Impostazione Layout Streamlit
 st.set_page_config(page_title="Piattaforma TaxTech AI", page_icon="🚀", layout="wide")
 
@@ -116,7 +136,9 @@ st.sidebar.title("⚙️ Parametri Fiscali & Mac")
 is_forfettario = st.sidebar.checkbox("🏢 Gestione Regime Forfettario", value=False)
 conto_fornitore_estero = st.sidebar.text_input("Mastro Fornitori (AVERE)", "450101")
 nome_cliente = st.sidebar.text_input("Nome Cliente Corrente (per Obsidian)", "Rossi_SRL")
-percorso_obsidian = st.sidebar.text_input("Percorso Cartella Hub_Fiscale del Mac", "/Users/IL_TUO_NOME/Documents/IlTuoVault/Hub_Fiscale")
+
+# ECCO LA TUA RIGA AGGIORNATA CON IL PERCORSO CORRETTO!
+percorso_obsidian = st.sidebar.text_input("Percorso Cartella Hub_Fiscale del Mac", "/Users/liviobarcariolo/Desktop/Convertit")
 
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
@@ -146,7 +168,7 @@ else:
                 status_text = st.empty()
                 
                 for index, file in enumerate(files_caricati):
-                    status_text.write(f"🔄 Validazione in corso per: **{file.name}**...")
+                    status_text.write(f"🔄 Validazione in corso per: **{file.name}** (potrebbe volerci qualche secondo se i server sono carichi)...")
                     
                     try:
                         file_bytes = file.read()
@@ -154,17 +176,11 @@ else:
                         part = types.Part.from_bytes(data=file_bytes, mime_type=mime_type)
                         prompt = "Esegui analisi contabile per il mercato italiano e rispondi rigorosamente seguendo lo schema JSON."
                         
-                        # --- MOTORE DOPPIO CIECO ---
-                        res1 = client.models.generate_content(
-                            model='gemini-2.5-flash', contents=[part, prompt],
-                            config=types.GenerateContentConfig(response_mime_type="application/json", response_schema=DatiFatturaEstera, temperature=0.1),
-                        )
+                        # --- MOTORE DOPPIO CIECO CON SISTEMA ANTI-BLOCCO (RETRY) ---
+                        res1 = chiama_gemini_con_retry(client, part, prompt, temp=0.1)
                         dati1 = json.loads(res1.text)
                         
-                        res2 = client.models.generate_content(
-                            model='gemini-2.5-flash', contents=[part, prompt],
-                            config=types.GenerateContentConfig(response_mime_type="application/json", response_schema=DatiFatturaEstera, temperature=0.3),
-                        )
+                        res2 = chiama_gemini_con_retry(client, part, prompt, temp=0.3)
                         dati2 = json.loads(res2.text)
                         
                         is_verified = (dati1["imponibile_valuta_originale"] == dati2["imponibile_valuta_originale"] and 
@@ -241,7 +257,6 @@ Il cliente [[{nome_cliente}]] ha ricevuto un documento da [[{risultato['fornitor
                     df_reg = pd.DataFrame(lista_registro)
                     st.write("### 📊 Cruscotto di Controllo (Doppio Cieco)")
                     
-                    # Corretto l'allineamento della colonna valuta_originale per evitare bug grafici
                     st.dataframe(df_reg[["File", "fornitore", "data_documento", "valuta_originale", "imponibile_valuta_originale", "Imponibile (€)", "codice_autofattura_sdi", "Controllo AI"]].rename(columns={
                         "fornitore": "Fornitore", "data_documento": "Data", "valuta_originale": "Valuta Orig.", "imponibile_valuta_originale": "Importo Orig.", "codice_autofattura_sdi": "Codice SDI"
                     }), use_container_width=True)
