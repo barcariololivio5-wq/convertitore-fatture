@@ -62,7 +62,8 @@ class DatiFatturaEstera(BaseModel):
     categoria_costo_suggerita: str = Field(description="Categoria tra: 'Software SaaS', 'Hosting/Cloud', 'Pubblicità/Marketing', 'Beni strumentali', 'Consulenza'")
     codice_autofattura_sdi: str = Field(description="Codice SDI richiesto: 'TD17' (servizi esteri), 'TD18' (beni UE), 'TD19' (beni ex art.17 c.2).")
 
-def genera_xml_autofattura(dati, imponibile_euro, is_forfettario):
+# INTEGRAZIONE STRUTTURA DINAMICA PER I DATI DEL CLIENTE CESSIONARIO
+def genera_xml_autofattura(dati, imponibile_euro, is_forfettario, nome_cliente, piva_cliente):
     natura_iva = "N6.1" if dati.get("codice_autofattura_sdi") == "TD17" else "N6.2"
     aliquota = "22.00"
     imposta = round(imponibile_euro * 0.22, 2)
@@ -83,13 +84,16 @@ def genera_xml_autofattura(dati, imponibile_euro, is_forfettario):
     dati_trasmissione = ET.SubElement(header, "DatiTrasmissione")
     id_trasmittente = ET.SubElement(dati_trasmissione, "IdTrasmittente")
     ET.SubElement(id_trasmittente, "IdPaese").text = "IT"
-    ET.SubElement(id_trasmittente, "IdCodice").text = "00000000000"
+    
+    # Il trasmittente formale prende la partita IVA del committente/studio che genera il documento
+    ET.SubElement(id_trasmittente, "IdCodice").text = str(piva_cliente).strip()
     ET.SubElement(dati_trasmissione, "ProgressivoInvio").text = "00001"
     ET.SubElement(dati_trasmissione, "FormatoTrasmissione").text = "FPR12"
     
     codice_destinatario = ET.SubElement(dati_trasmissione, "CodiceDestinatario")
     codice_destinatario.text = "0000000"
     
+    # CEDENTE PRESTATORE (Il fornitore estero)
     cedente = ET.SubElement(header, "CedentePrestatore")
     dati_anagrafici_c = ET.SubElement(cedente, "DatiAnagrafici")
     id_fiscale_c = ET.SubElement(dati_anagrafici_c, "IdFiscaleIVA")
@@ -98,13 +102,14 @@ def genera_xml_autofattura(dati, imponibile_euro, is_forfettario):
     anagrafica_c = ET.SubElement(dati_anagrafici_c, "Anagrafica")
     ET.SubElement(anagrafica_c, "Denominazione").text = dati.get("fornitore", "Fornitore Estero")
     
-    cessionario = ET.SubElement(header, "CessionarioCommittente")
+    # CESSIONARIO COMMITTENTE (Il tuo cliente - Ora Dinamico)
+    cessionario = ET.SubElement(header, "CActiveCommittente" if False else "CSample" if False else "CusionarioCommittente" if False else "CessionarioCommittente")
     dati_anagrafici_cess = ET.SubElement(cessionario, "DatiAnagrafici")
     id_fiscale_cess = ET.SubElement(dati_anagrafici_cess, "IdFiscaleIVA")
     ET.SubElement(id_fiscale_cess, "IdPaese").text = "IT"
-    ET.SubElement(id_fiscale_cess, "IdCodice").text = "00000000000"
+    ET.SubElement(id_fiscale_cess, "IdCodice").text = str(piva_cliente).strip()
     anagrafica_cess = ET.SubElement(dati_anagrafici_cess, "Anagrafica")
-    ET.SubElement(anagrafica_cess, "Denominazione").text = "AZIENDA CLIENTE SRL"
+    ET.SubElement(anagrafica_cess, "Denominazione").text = str(nome_cliente).strip()
 
     corpo = ET.SubElement(root, "FatturaElettronicaBody")
     dati_generali = ET.SubElement(corpo, "DatiGenerali")
@@ -170,7 +175,7 @@ with tab_overview:
     </div>
     """, unsafe_allow_html=True)
     
-    # Sezione KPI Numerici (Attirano l'attenzione del cliente)
+    # Sezione KPI Numerici
     col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
     with col_kpi1:
         st.metric(label="Tempo di elaborazione / documento", value="~ 2.4 Secondi", delta="-93% vs Manuale")
@@ -208,9 +213,11 @@ with tab_overview:
 # TAB 2: AREA OPERATIVA BLINDATA
 # =====================================================================
 with tab_operazione:
+    # INPUT NELLA SIDEBAR CON INTEGRAZIONE DEI DATI DINAMICI DEL CLIENTE
     st.sidebar.title("⚙️ Parametri di Configurazione")
     is_forfettario = st.sidebar.checkbox("🏢 Gestione Regime Forfettario", value=False)
-    nome_cliente = st.sidebar.text_input("Ragione Sociale Cliente", "Cliente_SRL")
+    nome_cliente = st.sidebar.text_input("Ragione Sociale Cliente dello Studio", "Azienda Cliente S.r.l.")
+    piva_cliente = st.sidebar.text_input("Partita IVA Cliente dello Studio (11 cifre)", "00000000000")
 
     # --- ⚖️ SEZIONE TUTELA LEGALE E PRIVACY COMPLIANCE ---
     st.write("### ⚖️ Note Legali, Limitazione di Responsabilità e Privacy")
@@ -223,7 +230,7 @@ with tab_operazione:
         Il presente applicativo fornisce elaborazioni statistiche e predittive automatizzate tramite modelli di Intelligenza Artificiale. Ai sensi e per gli effetti dell'**Art. 1229 del Codice Civile**, il fornitore dell'infrastruttura informatica, gli sviluppatori e lo Studio Professionale non si assumono alcuna responsabilità per danni diretti, indiretti, sanzioni amministrative, accertamenti fiscali o rigetti formali causati da errori tecnici, imprecisioni, omissioni o 'allucinazioni' dell'algoritmo nella compilazione dell'XML. 
         
         **3. PRESTAZIONE DI MEZZI E TASSACOLO OBBLIGO DI VERIFICA (Ex Art. 2236 Codice Civile)**
-        L'utente prende atto che il servizio si configura come fornitura di meri mezzi informatici e non di risultato. L'attribuzione della natura IVA, delle aliquote e della codifica del documento (es. TD17, TD18, TD19) è un suggerimento provvisorio. Resta in capo all'utente l'**obbligo tassativo di revisionare, controllare e validare manualmente** la correttezza del file XML generato prima dell'invio formale al Sistema di Interscambio (SDI) dell'Agenzia delle Entrate. Nei casi di prestazioni che implicano la soluzione di problemi tecnici di speciale difficoltà, la responsabilità è limitata ai soli casi di dolo o colpa grave ai sensi dell'**Art. 2236 del Codice Civile**.
+        L'utente prende atto che il servizio si configura como fornitura di meri mezzi informatici e non di risultato. L'attribuzione della natura IVA, delle aliquote e della codifica del documento (es. TD17, TD18, TD19) è un suggerimento provvisorio. Resta in capo all'utente l'**obbligo tassativo di revisionare, controllare e validare manualmente** la correttezza del file XML generato prima dell'invio formale al Sistema di Interscambio (SDI) dell'Agenzia delle Entrate. Nei casi di prestazioni che implicano la soluzione di problemi tecnici di speciale difficoltà, la responsabilità è limitata ai soli casi di dolo o colpa grave ai sensi dell'**Art. 2236 del Codice Civile**.
         """)
 
     accettazione_legale = st.checkbox("Dichiaro di aver letto e compreso l'informativa, accetto incondizionatamente i termini di manleva (Artt. 1229 e 2236 C.C.) e presto il consenso al trattamento dei dati personali (Art. 13 GDPR).")
@@ -242,87 +249,102 @@ with tab_operazione:
         if files_caricati:
             # Pulsante sbloccato SOLO se l'utente accetta la manleva legale
             if st.button("🚀 Avvia Conversione Massiva ed Invia al Hub Studio", disabled=not accettazione_legale):
-                lista_registro = []
-                file_zip_buffer = io.BytesIO()
                 
-                with zipfile.ZipFile(file_zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
-                    prompt_finale = "Esegui analisi contabile per il mercato italiano e rispondi rigorosamente seguendo lo schema JSON."
+                # Controllo preventivo di validazione per bloccare errori grossolani sulla P.IVA
+                if len(piva_cliente.strip()) != 11 or not piva_cliente.strip().isdigit():
+                    st.error("❌ Errore bloccante: Inserisci una Partita IVA valida di 11 cifre numeriche nella barra laterale prima di procedere.")
+                else:
+                    lista_registro = []
+                    file_zip_buffer = io.BytesIO()
                     
-                    for index, file in enumerate(files_caricati):
-                        status_text.write(f"🔄 Elaborazione AI per: **{file.name}**...")
+                    with zipfile.ZipFile(file_zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+                        prompt_finale = "Esegui analisi contabile per il mercato italiano e rispondi rigorosamente seguendo lo schema JSON."
                         
-                        try:
-                            file_bytes = file.read()
-                            mime_type = file.type
-                            part = types.Part.from_bytes(data=file_bytes, mime_type=mime_type)
+                        for index, file in enumerate(files_caricati):
+                            status_text.write(f"🔄 Elaborazione AI per: **{file.name}**...")
                             
-                            res1 = chiama_gemini_con_retry(client, part, prompt_finale, temp=0.1)
-                            dati1 = json.loads(res1.text)
+                            try:
+                                file_bytes = file.read()
+                                mime_type = file.type
+                                part = types.Part.from_bytes(data=file_bytes, mime_type=mime_type)
+                                
+                                res1 = chiama_gemini_con_retry(client, part, prompt_finale, temp=0.1)
+                                dati1 = json.loads(res1.text)
+                                
+                                res2 = chiama_gemini_con_retry(client, part, prompt_finale, temp=0.3)
+                                dati2 = json.loads(res2.text)
+                                
+                                is_verified = (dati1["imponibile_valuta_originale"] == dati2["imponibile_valuta_originale"] and 
+                                               dati1["codice_autofattura_sdi"] == dati2["codice_autofattura_sdi"])
+                                stato_validazione = "✅ Verificato" if is_verified else "⚠️ Discrepanza"
+                                
+                                risultato = dati1.copy()
+                                data_doc = risultato["data_documento"]
+                                valuta_orig = risultato["valuta_originale"].upper()
+                                importo_orig = risultato["imponibile_valuta_originale"]
+                                
+                                tasso_cambio_bce = 1.0
+                                if valuta_orig != "EUR":
+                                    try:
+                                        url_api = f"https://api.frankfurter.app/{data_doc}?from={valuta_orig}&to=EUR"
+                                        risposta_bce = requests.get(url_api, timeout=5).json()
+                                        if "rates" in risposta_bce and "EUR" in risposta_bce["rates"]:
+                                            tasso_cambio_bce = risposta_bce["rates"]["EUR"]
+                                    except Exception:
+                                        tasso_cambio_bce = 1.0
+                                
+                                imponibile_in_euro = round(importo_orig * tasso_cambio_bce, 2)
+                                
+                                # --- ASSOCIAZIONE AUTOMATICA DARE / AVERE ---
+                                categoria = risultato.get("categoria_costo_suggerita", "Software SaaS")
+                                conti = MAP_DARE_AVERE.get(categoria, {"dare": "3006001", "avere": "4010002"})
+                                
+                                # GENERAZIONE XML CON DATI ANAGRAFICI DINAMICI passati come argomenti
+                                xml_contenuto = genera_xml_autofattura(
+                                    risultato, 
+                                    imponibile_in_euro, 
+                                    is_forfettario, 
+                                    nome_cliente, 
+                                    piva_cliente
+                                )
+                                
+                                # Nomenclatura formale corretta per l'esportazione verso Agenzia Entrate / Zucchetti
+                                piva_pulita = piva_cliente.strip()
+                                tipo_doc = risultato['codice_autofattura_sdi']
+                                nome_file_xml = f"Fatture_XML/IT{piva_pulita}_{tipo_doc}_{index:05d}.xml"
+                                zip_file.writestr(nome_file_xml, xml_contenuto)
+                                
+                                # Invio ad Obsidian con Dare/Avere inclusi
+                                invia_al_cervello_centralizzato(risultato, nome_cliente, imponibile_in_euro, conti["dare"], conti["avere"])
+                                
+                                # Dati per la tabella di anteprima
+                                risultato["File"] = file.name
+                                risultato["Imponibile (€)"] = imponibile_in_euro
+                                risultato["Conto Dare"] = conti["dare"]
+                                risultato["Conto Avere"] = conti["avere"]
+                                risultato["Controllo AI"] = stato_validazione
+                                lista_registro.append(risultato)
+                                
+                            except Exception as e:
+                                st.error(f"Errore sul file {file.name}: {e}")
                             
-                            res2 = chiama_gemini_con_retry(client, part, prompt_finale, temp=0.3)
-                            dati2 = json.loads(res2.text)
-                            
-                            is_verified = (dati1["imponibile_valuta_originale"] == dati2["imponibile_valuta_originale"] and 
-                                           dati1["codice_autofattura_sdi"] == dati2["codice_autofattura_sdi"])
-                            stato_validazione = "✅ Verificato" if is_verified else "⚠️ Discrepanza"
-                            
-                            risultato = dati1.copy()
-                            data_doc = risultato["data_documento"]
-                            valuta_orig = risultato["valuta_originale"].upper()
-                            importo_orig = risultato["imponibile_valuta_originale"]
-                            
-                            tasso_cambio_bce = 1.0
-                            if valuta_orig != "EUR":
-                                try:
-                                    url_api = f"https://api.frankfurter.app/{data_doc}?from={valuta_orig}&to=EUR"
-                                    risposta_bce = requests.get(url_api, timeout=5).json()
-                                    if "rates" in risposta_bce and "EUR" in risposta_bce["rates"]:
-                                        tasso_cambio_bce = risposta_bce["rates"]["EUR"]
-                                except Exception:
-                                    tasso_cambio_bce = 1.0
-                            
-                            imponibile_in_euro = round(importo_orig * tasso_cambio_bce, 2)
-                            
-                            # --- ASSOCIAZIONE AUTOMATICA DARE / AVERE ---
-                            categoria = risultato.get("categoria_costo_suggerita", "Software SaaS")
-                            conti = MAP_DARE_AVERE.get(categoria, {"dare": "3006001", "avere": "4010002"})
-                            
-                            # Generazione XML SDI sicuro
-                            xml_contenuto = genera_xml_autofattura(risultato, imponibile_in_euro, is_forfettario)
-                            nome_file_xml = f"Fatture_XML/IT00000000000_{risultato['codice_autofattura_sdi']}_{index:05d}.xml"
-                            zip_file.writestr(nome_file_xml, xml_contenuto)
-                            
-                            # Invio ad Obsidian con Dare/Avere inclusi
-                            invia_al_cervello_centralizzato(risultato, nome_cliente, imponibile_in_euro, conti["dare"], conti["avere"])
-                            
-                            # Dati per la tabella di anteprima
-                            risultato["File"] = file.name
-                            risultato["Imponibile (€)"] = imponibile_in_euro
-                            risultato["Conto Dare"] = conti["dare"]
-                            risultato["Conto Avere"] = conti["avere"]
-                            risultato["Controllo AI"] = stato_validazione
-                            lista_registro.append(risultato)
-                            
-                        except Exception as e:
-                            st.error(f"Errore sul file {file.name}: {e}")
+                            progress_bar.progress((index + 1) / len(files_caricati))
                         
-                        progress_bar.progress((index + 1) / len(files_caricati))
-                    
-                    status_text.empty()
-                    
-                    if lista_registro:
-                        st.success("🎯 Processo completato con successo!")
-                        df_reg = pd.DataFrame(lista_registro)
-                        st.dataframe(df_reg[["File", "fornitore", "Imponibile (€)", "Conto Dare", "Conto Avere", "codice_autofattura_sdi", "Controllo AI"]], use_container_width=True)
+                        status_text.empty()
                         
-                        zip_file.close()
-                        file_zip_buffer.seek(0)
-                        
-                        st.download_button(
-                            label="📥 SCARICA PACCHETTO COMPLETO XML PER LO SDI", 
-                            data=file_zip_buffer, 
-                            file_name="autofatture_sdi.zip", 
-                            mime="application/zip"
-                        )
+                        if lista_registro:
+                            st.success("🎯 Processo completato con successo!")
+                            df_reg = pd.DataFrame(lista_registro)
+                            st.dataframe(df_reg[["File", "fornitore", "Imponibile (€)", "Conto Dare", "Conto Avere", "codice_autofattura_sdi", "Controllo AI"]], use_container_width=True)
+                            
+                            zip_file.close()
+                            file_zip_buffer.seek(0)
+                            
+                            st.download_button(
+                                label="📥 SCARICA PACCHETTO COMPLETO XML PER LO SDI", 
+                                data=file_zip_buffer, 
+                                file_name=f"autofatture_{piva_pulita}.zip", 
+                                mime="application/zip"
+                            )
