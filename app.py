@@ -136,27 +136,22 @@ def esegui_pre_check_xsd(dati, piva_cliente):
     errori = []
     avvisi = []
     
-    # Controllo P.IVA Cliente
     if len(piva_cliente.strip()) != 11 or not piva_cliente.strip().isdigit():
         errori.append("SDI-B01: La Partita IVA del Cessionario (Cliente) deve essere di esattamente 11 caratteri numerici.")
         
-    # Controllo Codice Paese Fornitore
     paese = dati.get("paese_provenienza", "").strip()
     if len(paese) != 2 or not paese.isalpha():
         errori.append("SDI-B02: Il codice ISO Paese del Fornitore deve essere di 2 lettere alfabetiche (es. US, IE).")
         
-    # Controllo Identificativo Fiscale Fornitore
     if not dati.get("identificativo_fiscale_fornitore", "").strip():
         errori.append("SDI-B03: L'identificativo fiscale (VAT ID / Tax ID) del Cedente è obbligatorio nel tracciato XML.")
         
-    # Controllo Formato Data
     data_str = dati.get("data_documento", "").strip()
     try:
         datetime.strptime(data_str, "%Y-%m-%d")
     except ValueError:
         errori.append("SDI-B04: Il formato della data del documento deve seguire tassativamente la struttura YYYY-MM-DD.")
         
-    # Controllo Coerenza Codice Documento
     codice_sdi = dati.get("codice_autofattura_sdi", "")
     if codice_sdi not in ["TD17", "TD18", "TD19"]:
         errori.append("SDI-B05: Codice Tipo Documento non valido per l'integrazione/autofattura estera.")
@@ -257,28 +252,24 @@ def chiama_gemini_con_retry(client, part, prompt, temp, max_tentativi=3):
 
 # --- STRUTTURAZIONE DELLA SESSION STATE PER BATCH PROCESSING ---
 if "lotto_lavoro" not in st.session_state:
-    st.session_state["lotto_lavoro"] = {} # Dizionario id_doc -> dati contabili
+    st.session_state["lotto_lavoro"] = {} 
 if "contatore_manuale" not in st.session_state:
     st.session_state["contatore_manuale"] = 0
 
 # --- NAVIGAZIONE SU SCHEDE CORPORATE ---  
 tab_overview, tab_operazione = st.tabs(["🏛️ Suite Istituzionale & Specifiche", "🚀 Centro di Controllo Massivo"]) 
 
-# =====================================================================  
-# TAB 1: PRESENTAZIONE PREMIUM & LUXURY COMPLIANCE
-# =====================================================================  
 with tab_overview:  
     st.markdown("""  
     <div class='luxury-banner'>  
-        <h1 style='color: #F59E0B; font-size: 3.5rem; margin-bottom: 5px; font-family: \"Inter\", sans-serif;'>TAXTECH INTELLIGENCE PLATFORM</h1>  
+        <h1 style='color: #F59E0B; font-size: 3.5rem; margin-bottom: 5px;'>TAXTECH INTELLIGENCE PLATFORM</h1>  
         <p style='color: #E2E8F0; font-size: 1.25rem; font-weight: 300; letter-spacing: 1px; max-width: 900px; margin: 0 auto;'>
-            Ingegneria fiscale e intelligenza artificiale per l'automazione massiva dei flussi di inversione contabile estera. Conforme alle specifiche Agenzia delle Entrate v1.2.2.
+            Ingegneria fiscale e intelligenza artificiale per l'automazione massiva dei flussi di inversioni contabili estere. Conforme alle specifiche Agenzia delle Entrate v1.2.2.
         </p>  
     </div>  
     """, unsafe_allow_html=True)  
       
     st.markdown("### 💎 Canali di Distribuzione e Interoperabilità")  
-    
     col_f1, col_f2, col_f3 = st.columns(3)  
     with col_f1:  
         st.markdown("""  
@@ -294,7 +285,7 @@ with tab_overview:
         <div class="luxury-card">  
             <div class="card-title">🔌 Importazione Sistemi Core Studio</div>  
             <div style="color: #94A3B8; font-size: 0.95rem; line-height: 1.6;">
-                Il pacchetto compresso ZIP adotta l'albero di nomenclatura standardizzato compatibile con i principali ERP italiani: <b>Zucchetti Omnia/Ago, TeamSystem, Euroconference, Digital Hub, Aruba e software gestionali per lo sci e l'hospitality</b>.
+                Il pacchetto compresso ZIP adotta l'albero di nomenclatura standardizzato compatibile con i principali ERP italiani: <b>Zucchetti Omnia/Ago, TeamSystem, Euroconference, Digital Hub, Aruba e software gestionali aziendali</b>.
             </div>  
         </div>  
         """, unsafe_allow_html=True)  
@@ -308,29 +299,13 @@ with tab_overview:
         </div>  
         """, unsafe_allow_html=True)  
 
-    st.markdown("---")  
-    col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)  
-    with col_kpi1:  
-        st.metric(label="SLA Velocità di Elaborazione", value="Ospedale dati < 3s", delta="Ottimizzato Flash 2.5")  
-    with col_kpi2:  
-        st.metric(label="Conformità dei Tracciati", value="XML v1.2.2", delta="Ufficiale AdE")  
-    with col_kpi3:  
-        st.metric(label="Trattamento dei Dati", value="Full Sandbox In-Memory", delta="Nessun Log Persistente")  
-    with col_kpi4:  
-        st.metric(label="Aggiornamento Tassi di Cambio", value="BCE Certificato", delta="Real-time / Storico")  
-
-# =====================================================================  
-# TAB 2: CENTRO OPERATIVO DI MASSA (CON TUTTI I 5 PUNTI IMPLEMENTATI)
-# =====================================================================  
 with tab_operazione:  
-    # SIDEBAR: Impostazioni Clienti (Dati Stabili della Sessione)
     st.sidebar.markdown("<h2 style='color: #F59E0B; font-size: 1.3rem;'>👑 Anagrafica Studio</h2>", unsafe_allow_html=True)  
     is_forfettario = st.sidebar.checkbox("🏢 Cliente in Regime Forfettario", value=False)  
     nome_cliente = st.sidebar.text_input("Ragione Sociale Cliente", "Corporate Client S.p.A.")  
     piva_cliente = st.sidebar.text_input("Partita IVA Cliente (11 cifre)", "01234567890")  
     
     st.sidebar.markdown("---")
-    # AZIONE EXTRA: Fallback inserimento manuale totale
     if st.sidebar.button("➕ AGGIUNGI AUTOFATTURA MANUALE"):
         st.session_state["contatore_manuale"] += 1
         id_man = f"MANUALE_{st.session_state['contatore_manuale']}"
@@ -346,7 +321,7 @@ with tab_operazione:
         }
         st.toast("Aggiunta nuova scheda per l'inserimento manuale!", icon="📝")
 
-    st.write("### 🛡️ Protocollo Sicurezza Crittografica & Sandbox")  
+    st.write("### 🛡️ Protocollo Securezza Crittografica & Sandbox")  
     accettazione_legale = st.checkbox("Abilita il caricamento cifrato e l'interfaccia di revisione contabile avanzata.")  
 
     try:  
@@ -359,13 +334,11 @@ with tab_operazione:
     elif accettazione_legale:  
         client = genai.Client(api_key=api_key)  
         
-        # Caricamento Massivo di Documenti (Punto 3)
         file_caricati = st.file_uploader("Trascina o seleziona un gruppo di fatture (PDF, JPG, PNG) - Elaborazione Simultanea", type=["png", "jpg", "jpeg", "pdf"], accept_multiple_files=True)  
           
         if file_caricati:  
             for f in file_caricati:
                 id_file = f.name
-                # Se il file non è presente nel lotto di sessione, estrai i dati con l'AI
                 if id_file not in st.session_state["lotto_lavoro"]:
                     with st.spinner(f"🧠 AI Reading: Decodifica avanzata di {f.name}..."):
                         file_bytes = f.read()
@@ -379,18 +352,15 @@ with tab_operazione:
                         except Exception as e:
                             st.error(f"Errore durante l'analisi di {f.name}: {str(e)}")
 
-        # CONTROLLO REVISIONE SE ABBIAMO ELEMENTI NEL LOTTO
         if st.session_state["lotto_lavoro"]:
             st.markdown("---")
             st.markdown("#### 🛠️ Area di Revisione ed Editoria dei Dati Estratti")
             
-            # Selectbox Luxury per scegliere quale documento esaminare del lotto corrente
             chiavi_lotto = list(st.session_state["lotto_lavoro"].keys())
             doc_selezionato = st.selectbox("🎯 SELEZIONA IL DOCUMENTO DA REVISIONARE O COMPILARE:", chiavi_lotto)
             
             dati_correnti = st.session_state["lotto_lavoro"][doc_selezionato]
             
-            # Layout pannello correzione
             with st.container(border=True):
                 st.markdown(f"**Stai modificando:** `{doc_selezionato}`")
                 
@@ -407,19 +377,7 @@ with tab_operazione:
                     edit_codice_sdi = st.selectbox("Codice Documento SDI Richiesto", ["TD17", "TD18", "TD19"], index=["TD17", "TD18", "TD19"].index(dati_correnti.get("codice_autofattura_sdi", "TD17")), key=f"sdi_{doc_selezionato}")
                     edit_cat = st.selectbox("Categoria di Costo", ["Software SaaS", "Hosting/Cloud", "Pubblicità/Marketing", "Beni strumentali", "Consulenza"], index=["Software SaaS", "Hosting/Cloud", "Pubblicità/Marketing", "Beni strumentali", "Consulenza"].index(dati_correnti.get("categoria_costo_suggerita", "Software SaaS")), key=f"cat_{doc_selezionato}")
             
-            # Salva le modifiche in tempo reale nello stato di memoria
-            st.session_state["lotto_lavoro"][doc_selezionato] = {
-                "fornitore": edit_fornitore,
-                "identificativo_fiscale_fornitore": edit_piva_forn,
-                "data_documento": edit_data,
-                "valuta_originale": edit_valuta,
-                "imponibile_valuta_originale": edit_imponibile,
-                "codice_autofattura_sdi": edit_codice_sdi,
-                "categoria_costo_suggerita": edit_cat,
-                "paese_provenienza": edit_paese
-            }
-
-            # --- INTEGRAZIONE AUTOMATICA TASSO DI CAMBIO BCE ---
+            # Calcolo Tasso di Cambio
             tasso_cambio_bce = 1.0
             if edit_valuta != "EUR":
                 try:
@@ -428,16 +386,36 @@ with tab_operazione:
                     if "rates" in risposta_bce and "EUR" in risposta_bce["rates"]:
                         tasso_cambio_bce = risposta_bce["rates"]["EUR"]
                 except Exception:
-                    tasso_cambio_bce = 1.0 # Fallback 1:1 se l'AdE richiede cambio alternativo o API offline
+                    tasso_cambio_bce = 1.0
             
             imponibile_calcolato_euro = round(edit_imponibile * tasso_cambio_bce, 2)
-            st.session_state["lotto_lavoro"][doc_selezionato]["imponibile_euro"] = imponibile_calcolato_euro
+            
+            # --- GESTIONE IVA FINALE ---
+            iva_calcolata_euro = 0.00 if is_forfettario else round(imponibile_calcolato_euro * 0.22, 2)
+            totale_calcolato_euro = round(imponibile_calcolato_euro + iva_calcolata_euro, 2)
+            
+            st.session_state["lotto_lavoro"][doc_selezionato] = {
+                "fornitore": edit_fornitore,
+                "identificativo_fiscale_fornitore": edit_piva_forn,
+                "data_documento": edit_data,
+                "valuta_originale": edit_valuta,
+                "imponibile_valuta_originale": edit_imponibile,
+                "imponibile_euro": imponibile_calcolato_euro,
+                "codice_autofattura_sdi": edit_codice_sdi,
+                "categoria_costo_suggerita": edit_cat,
+                "paese_provenienza": edit_paese
+            }
 
-            # Mostra dettagli cambio se applicabile
-            if edit_valuta != "EUR":
-                st.info(f"💱 **Rapporto Conversione Finanzaria:** {edit_imponibile:.2f} {edit_valuta} $\rightarrow$ **{imponibile_calcolato_euro:.2f} EUR** con tasso BCE fissato il {edit_data} pari a {tasso_cambio_bce}")
+            # KPI Dorati Istantanei
+            col_info1, col_info2, col_info3 = st.columns(3)
+            with col_info1:
+                st.metric("Base Imponibile (€)", f"{imponibile_calcolato_euro:.2f} EUR")
+            with col_info2:
+                st.metric("IVA Integrazione (22%)", f"{iva_calcolata_euro:.2f} EUR", delta="Calcolata su SDI" if not is_forfettario else "Regime Forfettario (N2.2)")
+            with col_info3:
+                st.metric("Totale Autofattura (€)", f"{totale_calcolato_euro:.2f} EUR")
 
-            # --- PUNTO 1: MOTORE DI VALIDAZIONE FORMALE XSD (PRE-CHECK) ---
+            # --- MOTORE DI PRE-VALIDAZIONE XSD ---
             st.markdown("#### 🛡️ Esito Ispezione Schema Ministeriale (Pre-Validazione XSD)")
             errori_scarto, avvisi_scarto = esegui_pre_check_xsd(st.session_state["lotto_lavoro"][doc_selezionato], piva_cliente)
             
@@ -445,14 +423,12 @@ with tab_operazione:
                 for err in errori_scarto:
                     st.error(f"❌ **ERRORE BLOCCANTE:** {err}")
             else:
-                st.markdown("<div style='color: #10B981; font-weight: 600; margin-bottom: 10px;'>🟢 STRUTTURA XML CONFORME: Nessun errore formale rilevato. Il tracciato supererà i controlli SDI dell'Agenzia delle Entrate.</div>", unsafe_allow_html=True)
+                st.markdown("<div style='color: #10B981; font-weight: 600; margin-bottom: 10px;'>🟢 STRUTTURA XML CONFORME: Il tracciato supererà i controlli SDI dell'Agenzia delle Entrate.</div>", unsafe_allow_html=True)
 
-            # --- PUNTO 2: SIMULATORE PRIMA NOTA (RICONCILIAZIONE CONTABILE) ---
+            # --- SIMULATORE PRIMA NOTA ---
             st.markdown("#### 📊 Anteprima di Registrazione in Prima Nota (Doppia Entrata)")
             dati_conto = MAP_PIANO_CONTI.get(edit_cat, MAP_PIANO_CONTI["Software SaaS"])
-            imposta_calcolata = 0.00 if is_forfettario else round(imponibile_calcolato_euro * 0.22, 2)
             
-            # Generazione Tabella HTML Stile Ledger Luxury
             html_ledger = f"""
             <table class="ledger-table">
                 <tr>
@@ -479,26 +455,30 @@ with tab_operazione:
                 <tr>
                     <td>2004001</td>
                     <td>IVA su acquisti (Reverse Charge Erario)</td>
-                    <td>{imposta_calcolata:.2f}</td>
+                    <td>{iva_calcolata_euro:.2f}</td>
                     <td>0.00</td>
                 </tr>
                 <tr>
                     <td>5002010</td>
                     <td>Erario c/Autofattura IVA vendite</td>
                     <td>0.00</td>
-                    <td>{imposta_calcolata:.2f}</td>
+                    <td>{iva_calcolata_euro:.2f}</td>
                 </tr>
                 """
             html_ledger += "</table>"
             st.markdown(html_ledger, unsafe_allow_html=True)
             st.write("")
 
-            # --- PUNTO 4: TABELLA DI QUADRATURA E REPORT GENERATION ---
+            # --- TABELLA DI QUADRATURA E REPORT GENERATION ---
             st.markdown("---")
             st.markdown("#### 📈 Riepilogo Generale del Lotto Attivo")
             
             righe_report = []
             for k, v in st.session_state["lotto_lavoro"].items():
+                imp_eur = v.get("imponibile_euro", 0.0)
+                iva_riga = 0.00 if is_forfettario else round(imp_eur * 0.22, 2)
+                tot_riga = round(imp_eur + iva_riga, 2)
+                
                 righe_report.append({
                     "Identificativo": k,
                     "Fornitore": v.get("fornitore", ""),
@@ -506,15 +486,16 @@ with tab_operazione:
                     "Data": v.get("data_documento", ""),
                     "Valuta Orig.": v.get("valuta_originale", ""),
                     "Imp. Valuta": v.get("imponibile_valuta_originale", 0.0),
-                    "Imp. EUR": v.get("imponibile_euro", 0.0),
-                    "Codice SDI": v.get("codice_autofattura_sdi", "TD17"),
-                    "Categoria Costo": v.get("categoria_costo_suggerita", "")
+                    "Imp. EUR (€)": imp_eur,
+                    "IVA (€)": iva_riga,
+                    "Totale Doc (€)": tot_riga,
+                    "Codice SDI": v.get("codice_autofattura_sdi", "TD17")
                 })
             
             df_report = pd.DataFrame(righe_report)
             st.dataframe(df_report, use_container_width=True)
 
-            # COMPILAZIONE MASSIVA DELLO ZIP CON TUTTI GLI XML GENERATI
+            # --- GENERAZIONE IN LINEA COMPATIBILE DELLO ZIP (SOLUZIONE AL TYPEERROR) ---
             file_zip_buffer = io.BytesIO()
             con_errori_bloccanti = False
             
@@ -522,34 +503,32 @@ with tab_operazione:
                 for idx, riga in enumerate(righe_report):
                     dati_xml = st.session_state["lotto_lavoro"][riga["Identificativo"]]
                     
-                    # Verifica che nessun elemento nel pacchetto abbia errori bloccanti
                     err_check, _ = esegui_pre_check_xsd(dati_xml, piva_cliente)
                     if err_check:
                         con_errori_bloccanti = True
                         
                     xml_stringa_finale = genera_xml_autofattura(dati_xml, is_forfettario, nome_cliente, piva_cliente)
                     piva_p = piva_cliente.strip()
-                    # Nome file normato AdE: IT[PIVA]_[CODICE_SDI]_[PROGRESSIVO]
                     nome_file_xml = f"IT{piva_p}_{dati_xml.get('codice_autofattura_sdi')}_{idx+1:05d}.xml"
-                    zip_file.writestr(nome_file_xml, xml_contenuto=xml_stringa_finale)
+                    
+                    # CORREZIONE POSIZIONALE PER EVITARE TYPEERROR:
+                    zip_file.writestr(nome_file_xml, xml_stringa_finale)
             
             file_zip_buffer.seek(0)
 
-            # Generazione file CSV di Quadratura per controllo di gestione
+            # Generazione file CSV di Quadratura
             csv_buffer = io.BytesIO()
             df_report.to_csv(csv_buffer, index=False, sep=";", encoding="utf-8-sig")
             csv_buffer.seek(0)
 
-            # AREA DI DOWNLOAD ISTANTANEA (AZIONI BATCH)
             st.markdown("#### 📦 Esportazione Output Certificati")
-            
             col_dl1, col_dl2 = st.columns(2)
             with col_dl1:
                 if con_errori_bloccanti:
-                    st.error("⚠️ Il download dello ZIP è inibito: correggi gli errori bloccanti XSD evidenziati sopra per procedere.")
+                    st.error("⚠️ Il download dello ZIP è bloccato: correggi gli errori XSD evidenziati sopra per sbloccarlo.")
                 else:
                     st.download_button(
-                        label="📥 SCARICA PACCHETTO XML MASSIVO (ZIP PER ADI/SDI)",
+                        label="📥 SCARICA PACCHETTO XML MASSIVO (ZIP PER ADE/SDI)",
                         data=file_zip_buffer,
                         file_name=f"LOTTO_AUTOFATTURE_SDI_{piva_cliente.strip()}.zip",
                         mime="application/zip",
