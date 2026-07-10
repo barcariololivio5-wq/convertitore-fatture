@@ -90,7 +90,7 @@ def genera_xml_autofattura(dati_validati, is_forfettario, nome_cliente, piva_cli
     ET.SubElement(id_fiscale_c, "IdPaese").text = dati_validati.get("paese_provenienza", "US")[:2].upper()  
     ET.SubElement(id_fiscale_c, "IdCodice").text = str(dati_validati.get("identificativo_fiscale_fornitore", "000000"))  
     anagrafica_c = ET.SubElement(dati_anagrafici_c, "Anagrafica")  
-    ET.SubElement(anagrafica_c, "Denominazione").text = dati_validated = dati_validati.get("fornitore", "Fornitore Estero")  
+    ET.SubElement(anagrafica_c, "Denominazione").text = dati_validati.get("fornitore", "Fornitore Estero")  
       
     # CESSIONARIO COMMITTENTE (Il cliente dello studio)  
     cessionario = ET.SubElement(header, "CessionarioCommittente")  
@@ -301,7 +301,7 @@ with tab_operazione:
                             "data_documento": data_doc_val,
                             "imponibile_euro": imponibile_val,
                             "codice_autofattura_sdi": codice_sdi_val,
-                            "categoria_costo_suggerita": category_val = categoria_val
+                            "categoria_costo_suggerita": categoria_val
                         }
                         
                         # 1. Generazione immediata dell'XML pulito basato sui dati a schermo
