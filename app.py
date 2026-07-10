@@ -606,7 +606,8 @@ with tab_feedback:
             
         fb_testo = st.text_area("Raccontaci la tua esperienza o descrivi il problema riscontrato:", placeholder="Esempio: L'estrazione AI è perfetta, ma vorrei poter esportare anche in formato Excel per manipolare i dati...")
         
-        bottone_invia_feedback = st.form_submit_form_button("🚀 INVIA FEEDBACK ALLA DASHBOARD DI SVILUPPO")
+        # QUI LA RIGA CORRETTA:
+        bottone_invia_feedback = st.form_submit_button("🚀 INVIA FEEDBACK ALLA DASHBOARD DI SVILUPPO")
         
         if bottone_invia_feedback:
             if not fb_testo.strip():
