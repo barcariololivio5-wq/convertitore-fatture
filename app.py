@@ -107,6 +107,17 @@ st.markdown("""
             border-radius: 8px;
             margin-top: 15px;
         }
+
+        .legal-shield-box {
+            background-color: #1A0B0B;
+            border: 1px solid #991B1B;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 0.82rem;
+            color: #FCA5A5;
+            line-height: 1.4;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -267,7 +278,7 @@ if "estratto_conto" not in st.session_state:
 if "lista_feedback" not in st.session_state:
     st.session_state["lista_feedback"] = []
 
-# --- SIDEBAR (WORKFLOW & INCENTIVO FEEDBACK) ---
+# --- SIDEBAR (WORKFLOW, ANAGRAFICA E SCUDO LEGALE) ---
 st.sidebar.markdown("<h2 style='color: #F59E0B; font-size: 1.3rem;'>👤 Workflow Accessi</h2>", unsafe_allow_html=True)
 ruolo_utente = st.sidebar.radio("Seleziona il tuo Profilo:", ["Commercialista / Studio", "Azienda Cliente (Sola Lettura/Caricamento)"])
 
@@ -279,6 +290,17 @@ piva_cliente = st.sidebar.text_input("Partita IVA Cliente (11 cifre)", "01234567
 st.sidebar.markdown("---")
 st.sidebar.markdown("<h3 style='color: #F59E0B; font-size: 1.1rem;'>💾 Configurazione ERP Studio</h3>", unsafe_allow_html=True)
 software_scelto = st.sidebar.selectbox("Seleziona il Gestionale di Studio per l'Export", ["Zucchetti (Ago/Omnia)", "TeamSystem (Polyedro)", "Sistemi Profis"])
+
+# --- ELEMENTO 1 DELLO SCUDO LEGALE: INFORMATIVA E LIMITAZIONE DI RESPONSABILITÀ FISSA ---
+with st.sidebar.expander("⚖️ AVVISO LEGALE & ESONERO RESPONSABILITÀ", expanded=True):
+    st.markdown("""
+    <div style="font-size: 0.78rem; color: #94A3B8; line-height: 1.3; text-align: justify;">
+        <b>Natura del Servizio:</b> Questa applicazione è distribuita a titolo gratuito esclusivamente per finalità di <b>Free Beta Testing</b> dimostrativo e di valutazione tecnica.<br><br>
+        <b>Esclusione di Garanzia:</b> Il software viene fornito "così com'è" (<i>As Is</i>), senza alcuna garanzia esplicita o implicita di esattezza contabile o conformità fiscale.<br><br>
+        <b>Esonero Sanzioni:</b> Gli sviluppatori e i gestori della piattaforma non si assumono alcuna responsabilità per errori di interpretazione dell'Intelligenza Artificiale, omissioni, difformità nei file XML generati o per eventuali sanzioni tributarie, amministrative o penali comminate dall'Agenzia delle Entrate all'utente o ai suoi clienti.<br><br>
+        <b>Privacy & GDPR:</b> I dati e i documenti caricati vengono elaborati in memoria volatile tramite connessione cifrata (Sandbox temporanea) e vengono distrutti alla chiusura della sessione. Nessun dato viene memorizzato in modo permanente. L'utente resta l'unico Titolare del Trattamento dei dati immessi.
+    </div>
+    """, unsafe_allow_html=True)
 
 # Box Fisso Feedback in Sidebar
 st.sidebar.markdown("""
@@ -308,6 +330,13 @@ with tab_overview:
         </p>  
     </div>  
     """, unsafe_allow_html=True)  
+
+    # --- ELEMENTO 2 DELLO SCUDO LEGALE: BANNER DI ATTENZIONE CENTRALIZZATO ---
+    st.markdown("""
+    <div style="background-color: #1A120B; border: 1px solid #D97706; padding: 15px; border-radius: 8px; margin-bottom: 25px; font-size: 0.88rem; color: #FCD34D;">
+        ⚠️ <b>AVVISO COMPLIANCE DI STUDIO:</b> L'estrazione dei metadati operata dai modelli linguistici (AI) funge da mero assistente alla compilazione. Prima di procedere al download o alla trasmissione dei file XML al Sistema di Interscambio (SDI), il Professionista Abilitato ha il dovere giuridico e deontologico di verificare l'esattezza di imponibili, aliquote e codici IVA.
+    </div>
+    """, unsafe_allow_html=True)
       
     st.markdown("### 💎 Sistemi di Protezione & Ricorrente SaaS")  
     col_f1, col_f2, col_f3 = st.columns(3)  
@@ -358,7 +387,7 @@ with tab_operazione:
             st.toast("Nuova fattura inserita nel lotto di studio!", icon="📝")
 
     st.write("### 🛡️ Core Processing & Revisione lotti")  
-    accettazione_legale = st.checkbox("Abilita il caricamento dei file e l'interfaccia di revisione avanzata.", value=True)  
+    accettazione_legale = st.checkbox("Abilita il caricamento dei file e dichiaro di aver letto le note legali di esonero responsabilità.", value=True)  
 
     try:  
         api_key = st.secrets["GEMINI_API_KEY"]  
@@ -433,8 +462,14 @@ with tab_operazione:
             else:
                 st.info(f"🟢 Termini di legge sicuri. Scadenza: {data_limite} (Mancano {giorni_mancanti} giorni).")
 
+            # --- ELEMENTO 3 DELLO SCUDO LEGALE: CLAUSOLA DI MANLEVA ALL'INTERNO DEL REGISTRO WORKFLOW ---
             stato_corrente_approvazione = dati_correnti.get("stato_approvazione", "In Revisione")
             if ruolo_utente == "Commercialista / Studio":
+                st.markdown("""
+                <span style="font-size:0.8rem; color:#94A3B8;">
+                    ⚖️ <b>Clausola di Manleva:</b> Modificando lo stato in <i>"Approvato per SDI"</i>, l'utente attesta di aver eseguito il controllo umano dei calcoli esonerando il software da vizi di compilazione.
+                </span>
+                """, unsafe_allow_html=True)
                 scelta_stato = st.radio("Cambia Stato Validazione:", ["In Revisione", "Approvato per SDI"], index=["In Revisione", "Approvato per SDI"].index(stato_corrente_approvazione), horizontal=True)
                 stato_corrente_approvazione = scelta_stato
 
@@ -606,14 +641,12 @@ with tab_feedback:
             
         fb_testo = st.text_area("Raccontaci la tua esperienza o descrivi il problema riscontrato:", placeholder="Esempio: L'estrazione AI è perfetta, ma vorrei poter esportare anche in formato Excel per manipolare i dati...")
         
-        # QUI LA RIGA CORRETTA:
         bottone_invia_feedback = st.form_submit_button("🚀 INVIA FEEDBACK ALLA DASHBOARD DI SVILUPPO")
         
         if bottone_invia_feedback:
             if not fb_testo.strip():
                 st.warning("⚠️ Per favore, inserisci un commento prima di inviare.")
             else:
-                # Struttura dati del feedback
                 nuovo_feedback = {
                     "Data": datetime.now().strftime("%Y-%m-%d %H:%M"),
                     "Mittente": fb_nome if fb_nome else "Anonimo",
@@ -622,11 +655,9 @@ with tab_feedback:
                     "Valutazione": f"{fb_rating} / 5 ⭐",
                     "Messaggio": fb_testo
                 }
-                # Salvataggio temporaneo nel session_state dell'app per vederlo subito
                 st.session_state["lista_feedback"].append(nuovo_feedback)
                 st.success("🎉 Grazie mille! Il tuo feedback è stato salvato ed è preziosissimo per la nostra roadmap di sviluppo.")
 
-    # Visualizzazione dei feedback ricevuti (Simulazione Pannello Admin visibile in Beta)
     if st.session_state["lista_feedback"]:
         st.markdown("---")
         st.markdown("#### 📥 Archivio Feedback Ricevuti in questa sessione (Simulazione Admin Panel)")
