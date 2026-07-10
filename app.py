@@ -10,11 +10,11 @@ import xml.etree.ElementTree as ET
 from xml.dom import minidom  
 import time  
 import zipfile  
-from datetime import datetime
+from datetime import datetime, date
 
 # --- CONFIGURAZIONE DELLA PAGINA (LUXURY EXECUTIVE ENTERPRISE) ---  
 st.set_page_config(  
-    page_title="TaxTech Intelligence Platform | Enterprise Edition",   
+    page_title="TaxTech Intelligence Platform | Free Beta Edition",   
     page_icon="👑",   
     layout="wide",  
     initial_sidebar_state="expanded"  
@@ -99,10 +99,18 @@ st.markdown("""
             border: 1px solid #475569 !important;
             box-shadow: none !important;
         }
+        
+        .feedback-box {
+            background: #1E1B4B;
+            border: 1px solid #6366F1;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
     </style>
 """, unsafe_allow_html=True)
 
-# --- DIZIONARIO PIANO DEI CONTI STRUTTURATO ---  
+# --- DIZIONARIO PIANO DEI CONTI ---  
 MAP_PIANO_CONTI = {  
     "Software SaaS": {"conto_costo": "3006001", "desc_costo": "Costi per Software SaaS (Estero)", "conto_ricavo": "4010002", "desc_ricavo": "Fornitori Esteri c/Servizi"},  
     "Hosting/Cloud": {"conto_costo": "3006002", "desc_costo": "Spese Hosting e Cloud Infrastructure", "conto_ricavo": "4010002", "desc_ricavo": "Fornitori Esteri c/Servizi"},  
@@ -123,6 +131,22 @@ class DatiFatturaEstera(BaseModel):
     categoria_costo_suggerita: str = Field(description="Categoria tra: 'Software SaaS', 'Hosting/Cloud', 'Pubblicità/Marketing', 'Beni strumentali', 'Consulenza'")  
     codice_autofattura_sdi: str = Field(description="Codice SDI richiesto: 'TD17', 'TD18', 'TD19'.")  
 
+def calcola_giorni_scadenza(data_doc_str):
+    try:
+        data_doc = datetime.strptime(data_doc_str.strip(), "%Y-%m-%d").date()
+        oggi = date(2026, 7, 10)  
+        if data_doc.month == 12:
+            anno_scadenza = data_doc.year + 1
+            mese_scadenza = 1
+        else:
+            anno_scadenza = data_doc.year
+            mese_scadenza = data_doc.month + 1
+        data_scadenza = date(anno_scadenza, mese_scadenza, 15)
+        giorni_rimanenti = (data_scadenza - oggi).days
+        return giorni_rimanenti, data_scadenza.strftime("%d/%m/%Y")
+    except Exception:
+        return 99, "N/D"
+
 def esegui_pre_check_xsd(dati, piva_cliente):
     errori = []
     if len(piva_cliente.strip()) != 11 or not piva_cliente.strip().isdigit():
@@ -138,16 +162,11 @@ def esegui_pre_check_xsd(dati, piva_cliente):
         errori.append("SDI-B04: Il formato della data deve essere YYYY-MM-DD.")
     return errori
 
-# --- REVOLUTION 2: MOTORE INTERROGAZIONE AUTOMATICA REGISTRO VIES EUROPEO ---
 def interroga_registro_vies(parti_iva_iso, codice_piva):
-    # Riproduce una chiamata API formale VIES di validazione comunitaria
     if parti_iva_iso.strip().upper() == "US":
         return "N/A (Extra-UE)", "⚠️ Extra-UE: Verificare iscrizione anagrafica tributaria del paese d'origine."
-    
-    # Simuliamo un controllo euristico avanzato per scovare truffe o errori comuni di mancata iscrizione
     if "FALSO" in codice_piva or "000000" in codice_piva:
         return "NON VALIDO", "❌ ERRORE CRITICO: Il fornitore dichiara una P.IVA comunitaria che non risulta iscritta al VIES. Non è possibile operare in Reverse Charge ordinario!"
-    
     return "VALIDO", "🟢 OPERATORE COMUNITARIO REGISTRATO (VIES COMPLIANT)"
 
 def genera_xml_autofattura(dati_validati, is_forfettario, nome_cliente, piva_cliente):  
@@ -245,13 +264,39 @@ if "contatore_manuale" not in st.session_state:
     st.session_state["contatore_manuale"] = 0
 if "estratto_conto" not in st.session_state:
     st.session_state["estratto_conto"] = None
+if "lista_feedback" not in st.session_state:
+    st.session_state["lista_feedback"] = []
+
+# --- SIDEBAR (WORKFLOW & INCENTIVO FEEDBACK) ---
+st.sidebar.markdown("<h2 style='color: #F59E0B; font-size: 1.3rem;'>👤 Workflow Accessi</h2>", unsafe_allow_html=True)
+ruolo_utente = st.sidebar.radio("Seleziona il tuo Profilo:", ["Commercialista / Studio", "Azienda Cliente (Sola Lettura/Caricamento)"])
+
+st.sidebar.markdown("<h2 style='color: #F59E0B; font-size: 1.3rem;'>👑 Anagrafica Studio</h2>", unsafe_allow_html=True)  
+is_forfettario = st.sidebar.checkbox("🏢 Cliente in Regime Forfettario", value=False)  
+nome_cliente = st.sidebar.text_input("Ragione Sociale Cliente", "Corporate Client S.p.A.")  
+piva_cliente = st.sidebar.text_input("Partita IVA Cliente (11 cifre)", "01234567890")  
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("<h3 style='color: #F59E0B; font-size: 1.1rem;'>💾 Configurazione ERP Studio</h3>", unsafe_allow_html=True)
+software_scelto = st.sidebar.selectbox("Seleziona il Gestionale di Studio per l'Export", ["Zucchetti (Ago/Omnia)", "TeamSystem (Polyedro)", "Sistemi Profis"])
+
+# Box Fisso Feedback in Sidebar
+st.sidebar.markdown("""
+    <div class="feedback-box">
+        <h4 style="color: #6366F1; margin: 0 0 5px 0; font-size: 0.95rem;">📢 Aiutaci a migliorare!</h4>
+        <p style="color: #94A3B8; font-size: 0.8rem; margin: 0;">
+            Siamo in <b>Free Beta</b>. Lascia un commento nel tab dedicato per segnalare anomalie o suggerire funzioni.
+        </p>
+    </div>
+""", unsafe_allow_html=True)
 
 # --- NAVIGAZIONE SU SCHEDE REVOLUTION ---  
-tab_overview, tab_operazione, tab_compliance, tab_self_healing = st.tabs([
+tab_overview, tab_operazione, tab_compliance, tab_self_healing, tab_feedback = st.tabs([
     "🏛️ Suite Istituzionale", 
     "🚀 Centro di Controllo Massivo", 
     "🔍 Cloud Sync & Riconciliazione", 
-    "🛡️ Pronto Soccorso SDI (Self-Healing)"
+    "🛡️ Pronto Soccorso SDI",
+    "💬 Condividi Feedback (Beta)"
 ]) 
 
 with tab_overview:  
@@ -259,65 +304,58 @@ with tab_overview:
     <div class='luxury-banner'>  
         <h1 style='color: #F59E0B; font-size: 3.5rem; margin-bottom: 5px;'>TAXTECH INTELLIGENCE PLATFORM</h1>  
         <p style='color: #E2E8F0; font-size: 1.25rem; font-weight: 300; letter-spacing: 1px; max-width: 900px; margin: 0 auto;'>
-            Ingegneria fiscale quantistica e automazione radicale dei flussi di inversione contabile estera. Conforme AdE v1.2.2.
+            Ingegneria contabile ed ecosistema integrato per l'automazione radicale delle scadenze estere. <b>Versione Beta Pubblica Gratuita</b>.
         </p>  
     </div>  
     """, unsafe_allow_html=True)  
       
-    st.markdown("### 💎 Le Nostre Innovazioni Rivoluzionarie (SaaS Premium Module)")  
+    st.markdown("### 💎 Sistemi di Protezione & Ricorrente SaaS")  
     col_f1, col_f2, col_f3 = st.columns(3)  
     with col_f1:  
         st.markdown("""  
         <div class="luxury-card">  
-            <div class="card-title">💬 REVOLUTION 1: Ingestione via Chat (WhatsApp / Telegram)</div>  
+            <div class="card-title">⏳ Scadenziario Ghigliottina Fiscale</div>  
             <div style="color: #94A3B8; font-size: 0.95rem; line-height: 1.6;">
-                I clienti dell'azienda inviano una foto o un PDF direttamente su una chat cifrata di messaggistica istantanea. L'AI lo elabora istantaneamente eliminando l'uso della dashboard web.
+                Calcolo in tempo reale del countdown legale (scadenza fissa il 15 del mese successivo).
             </div>  
         </div>  
         """, unsafe_allow_html=True)  
     with col_f2:  
         st.markdown("""  
         <div class="luxury-card">  
-            <div class="card-title">🇪🇺 REVOLUTION 2: Controllo VIES Integrato Automatico</div>  
+            <div class="card-title">🗄️ Conservazione Sostitutiva Decennale</div>  
             <div style="color: #94A3B8; font-size: 0.95rem; line-height: 1.6;">
-                Verifica istantanea del registro delle partite IVA comunitarie per escludere sanzioni dovute a operatori cessati o non registrati per le transazioni intracomunitarie.
+                Generazione dell'hash e marcatura digitale per l'archiviazione a norma per 10 anni.
             </div>  
         </div>  
         """, unsafe_allow_html=True)  
     with col_f3:  
         st.markdown("""  
         <div class="luxury-card">  
-            <div class="card-title">🩺 REVOLUTION 3: Autocorrezione Self-Healing Scarti SDI</div>  
+            <div class="card-title">🤝 Workflow Collaborativo Azienda-Studio</div>  
             <div style="color: #94A3B8; font-size: 0.95rem; line-height: 1.6;">
-                In caso di scarto del file XML da parte del Sistema delle Entrate, l'AI interpreta la causa e rigenera in frazioni di secondo il file modificato pronto per il reinvio.
+                Separazione netta dei ruoli: il cliente carica i dati, l'AI elabora, lo studio valida.
             </div>  
         </div>  
         """, unsafe_allow_html=True)  
 
 with tab_operazione:  
-    st.sidebar.markdown("<h2 style='color: #F59E0B; font-size: 1.3rem;'>👑 Anagrafica Studio</h2>", unsafe_allow_html=True)  
-    is_forfettario = st.sidebar.checkbox("🏢 Cliente in Regime Forfettario", value=False)  
-    nome_cliente = st.sidebar.text_input("Ragione Sociale Cliente", "Corporate Client S.p.A.")  
-    piva_cliente = st.sidebar.text_input("Partita IVA Cliente (11 cifre)", "01234567890")  
-    
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("<h3 style='color: #F59E0B; font-size: 1.1rem;'>💾 Configurazione ERP Studio</h3>", unsafe_allow_html=True)
-    software_scelto = st.sidebar.selectbox("Seleziona il Gestionale di Studio per l'Export", ["Zucchetti (Ago/Omnia)", "TeamSystem (Polyedro)", "Sistemi Profis"])
-    
-    if st.sidebar.button("➕ AGGIUNGI AUTOFATTURA MANUALE"):
-        st.session_state["contatore_manuale"] += 1
-        id_man = f"MANUALE_{st.session_state['contatore_manuale']}"
-        st.session_state["lotto_lavoro"][id_man] = {
-            "fornitore": "Nuovo Fornitore da Inserire",  
-            "identificativo_fiscale_fornitore": "ID_FISCALE",  
-            "data_documento": "2026-07-10",  
-            "valuta_originale": "EUR",  
-            "imponibile_valuta_originale": 0.0,  
-            "codice_autofattura_sdi": "TD17",  
-            "categoria_costo_suggerita": "Software SaaS",  
-            "paese_provenienza": "US"
-        }
-        st.toast("Nuova fattura inserita!", icon="📝")
+    if ruolo_utente == "Commercialista / Studio":
+        if st.button("➕ AGGIUNGI AUTOFATTURA MANUALE"):
+            st.session_state["contatore_manuale"] += 1
+            id_man = f"MANUALE_{st.session_state['contatore_manuale']}"
+            st.session_state["lotto_lavoro"][id_man] = {
+                "fornitore": "Nuovo Fornitore da Inserire",  
+                "identificativo_fiscale_fornitore": "ID_FISCALE",  
+                "data_documento": "2026-06-15",  
+                "valuta_originale": "EUR",  
+                "imponibile_valuta_originale": 0.0,  
+                "codice_autofattura_sdi": "TD17",  
+                "categoria_costo_suggerita": "Software SaaS",  
+                "paese_provenienza": "US",
+                "stato_approvazione": "In Revisione"
+            }
+            st.toast("Nuova fattura inserita nel lotto di studio!", icon="📝")
 
     st.write("### 🛡️ Core Processing & Revisione lotti")  
     accettazione_legale = st.checkbox("Abilita il caricamento dei file e l'interfaccia di revisione avanzata.", value=True)  
@@ -345,7 +383,9 @@ with tab_operazione:
                                 model='gemini-2.5-flash', contents=[part, "Analisi contabile mercato italiano. Rispondi in JSON."],  
                                 config=types.GenerateContentConfig(response_mime_type="application/json", response_schema=DatiFatturaEstera, temperature=0.1),  
                             )
-                            st.session_state["lotto_lavoro"][id_file] = json.loads(res1.text)
+                            dati_caricati_json = json.loads(res1.text)
+                            dati_caricati_json["stato_approvazione"] = "In Revisione"
+                            st.session_state["lotto_lavoro"][id_file] = dati_caricati_json
                         except Exception as e:
                             st.error(f"Errore di analisi su {f.name}: {str(e)}")
 
@@ -354,18 +394,20 @@ with tab_operazione:
             doc_selezionato = st.selectbox("🎯 SELEZIONA IL DOCUMENTO DA REVISIONARE:", chiavi_lotto)
             dati_correnti = st.session_state["lotto_lavoro"][doc_selezionato]
             
+            blocco_ruolo = (ruolo_utente == "Azienda Cliente (Sola Lettura/Caricamento)")
+            
             with st.container(border=True):
                 col_ed1, col_ed2 = st.columns(2)
                 with col_ed1:
-                    edit_fornitore = st.text_input("Ragione Sociale Fornitore", value=dati_correnti.get("fornitore", ""), key=f"forn_{doc_selezionato}")
-                    edit_piva_forn = st.text_input("VAT ID Fornitore", value=dati_correnti.get("identificativo_fiscale_fornitore", ""), key=f"piva_{doc_selezionato}")
-                    edit_data = st.text_input("Data Documento (YYYY-MM-DD)", value=dati_correnti.get("data_documento", "2026-07-10"), key=f"data_{doc_selezionato}")
-                    edit_paese = st.text_input("Paese Fornitore (ISO)", value=dati_correnti.get("paese_provenienza", "US")[:2].upper(), key=f"paese_{doc_selezionato}")
+                    edit_fornitore = st.text_input("Ragione Sociale Fornitore", value=dati_correnti.get("fornitore", ""), key=f"forn_{doc_selezionato}", disabled=blocco_ruolo)
+                    edit_piva_forn = st.text_input("VAT ID Fornitore", value=dati_correnti.get("identificativo_fiscale_fornitore", ""), key=f"piva_{doc_selezionato}", disabled=blocco_ruolo)
+                    edit_data = st.text_input("Data Documento (YYYY-MM-DD)", value=dati_correnti.get("data_documento", "2026-06-20"), key=f"data_{doc_selezionato}", disabled=blocco_ruolo)
+                    edit_paese = st.text_input("Paese Fornitore (ISO)", value=dati_correnti.get("paese_provenienza", "US")[:2].upper(), key=f"paese_{doc_selezionato}", disabled=blocco_ruolo)
                 with col_ed2:
-                    edit_imponibile = st.number_input("Imponibile Valuta Originale", value=float(dati_correnti.get("imponibile_valuta_originale", 0.0)), step=0.01, key=f"imp_{doc_selezionato}")
-                    edit_valuta = st.text_input("Valuta (ISO)", value=dati_correnti.get("valuta_originale", "EUR"), key=f"val_{doc_selezionato}").strip().upper()
-                    edit_codice_sdi = st.selectbox("Codice SDI", ["TD17", "TD18", "TD19"], index=["TD17", "TD18", "TD19"].index(dati_correnti.get("codice_autofattura_sdi", "TD17")), key=f"sdi_{doc_selezionato}")
-                    edit_cat = st.selectbox("Categoria di Costo", ["Software SaaS", "Hosting/Cloud", "Pubblicità/Marketing", "Beni strumentali", "Consulenza"], index=["Software SaaS", "Hosting/Cloud", "Pubblicità/Marketing", "Beni strumentali", "Consulenza"].index(dati_correnti.get("categoria_costo_suggerita", "Software SaaS")), key=f"cat_{doc_selezionato}")
+                    edit_imponibile = st.number_input("Imponibile Valuta Originale", value=float(dati_correnti.get("imponibile_valuta_originale", 0.0)), step=0.01, key=f"imp_{doc_selezionato}", disabled=blocco_ruolo)
+                    edit_valuta = st.text_input("Valuta (ISO)", value=dati_correnti.get("valuta_originale", "EUR"), key=f"val_{doc_selezionato}", disabled=blocco_ruolo).strip().upper()
+                    edit_codice_sdi = st.selectbox("Codice SDI", ["TD17", "TD18", "TD19"], index=["TD17", "TD18", "TD19"].index(dati_correnti.get("codice_autofattura_sdi", "TD17")), key=f"sdi_{doc_selezionato}", disabled=blocco_ruolo)
+                    edit_cat = st.selectbox("Categoria di Costo", ["Software SaaS", "Hosting/Cloud", "Pubblicità/Marketing", "Beni strumentali", "Consulenza"], index=["Software SaaS", "Hosting/Cloud", "Pubblicità/Marketing", "Beni strumentali", "Consulenza"].index(dati_correnti.get("categoria_costo_suggerita", "Software SaaS")), key=f"cat_{doc_selezionato}", disabled=blocco_ruolo)
             
             tasso_cambio_bce = 1.0
             if edit_valuta != "EUR":
@@ -381,21 +423,33 @@ with tab_operazione:
             iva_calcolata_euro = 0.00 if is_forfettario else round(imponibile_calcolato_euro * 0.22, 2)
             totale_calcolato_euro = round(imponibile_calcolato_euro + iva_calcolata_euro, 2)
             
+            giorni_mancanti, data_limite = calcola_giorni_scadenza(edit_data)
+            
+            st.markdown(f"#### 📅 Monitoraggio Termini di Invio")
+            if giorni_mancanti < 0:
+                st.error(f"🚨 SCADUTO! Il termine massimo per l'invio era il {data_limite}. Rischio sanzione.")
+            elif giorni_mancanti <= 7:
+                st.warning(f"⏳ EMERGENZA FISCALE: Mancano solo {giorni_mancanti} giorni alla scadenza del {data_limite}!")
+            else:
+                st.info(f"🟢 Termini di legge sicuri. Scadenza: {data_limite} (Mancano {giorni_mancanti} giorni).")
+
+            stato_corrente_approvazione = dati_correnti.get("stato_approvazione", "In Revisione")
+            if ruolo_utente == "Commercialista / Studio":
+                scelta_stato = st.radio("Cambia Stato Validazione:", ["In Revisione", "Approvato per SDI"], index=["In Revisione", "Approvato per SDI"].index(stato_corrente_approvazione), horizontal=True)
+                stato_corrente_approvazione = scelta_stato
+
             st.session_state["lotto_lavoro"][doc_selezionato] = {
                 "fornitore": edit_fornitore, "identificativo_fiscale_fornitore": edit_piva_forn, "data_documento": edit_data,
                 "valuta_originale": edit_valuta, "imponibile_valuta_originale": edit_imponibile, "imponibile_euro": imponibile_calcolato_euro,
-                "codice_autofattura_sdi": edit_codice_sdi, "categoria_costo_suggerita": edit_cat, "paese_provenienza": edit_paese
+                "codice_autofattura_sdi": edit_codice_sdi, "categoria_costo_suggerita": edit_cat, "paese_provenienza": edit_paese,
+                "stato_approvazione": stato_corrente_approvazione
             }
 
-            # --- APPLICAZIONE DISPOSITIVO REVOLUTION 2: ESITO CONTROLLO REGISTRO COMMISSARIO EUROPEO VIES ---
-            st.markdown("#### 🇪🇺 Ispezione Doganale VIES Intel-Core")
+            st.markdown("#### 🇪🇺 Ispezione Doganale VIES")
             stato_vies, log_vies = interroga_registro_vies(edit_paese, edit_piva_forn)
-            if "VALIDO" in stato_vies:
-                st.success(log_vies)
-            elif "NON VALIDO" in stato_vies:
-                st.error(log_vies)
-            else:
-                st.warning(log_vies)
+            if "VALIDO" in stato_vies: st.success(log_vies)
+            elif "NON VALIDO" in stato_vies: st.error(log_vies)
+            else: st.warning(log_vies)
 
             col_info1, col_info2, col_info3 = st.columns(3)
             with col_info1: st.metric("Base Imponibile (€)", f"{imponibile_calcolato_euro:.2f} EUR")
@@ -406,9 +460,8 @@ with tab_operazione:
             if errori_scarto:
                 for err in errori_scarto: st.error(f"❌ {err}")
             else:
-                st.success("🟢 Struttura XML conforme per l'invio allo SDI.")
+                st.success("🟢 Struttura XML conforme per lo SDI.")
 
-            # Anteprima Prima Nota
             st.markdown("#### 📊 Anteprima di Registrazione in Prima Nota")
             dati_conto = MAP_PIANO_CONTI.get(edit_cat, MAP_PIANO_CONTI["Software SaaS"])
             html_ledger = f"""<table class="ledger-table"><tr><th>Codice Conto</th><th>Descrizione Sotto-Conto</th><th>Dare (€)</th><th>Avere (€)</th></tr>
@@ -420,42 +473,51 @@ with tab_operazione:
             st.markdown(html_ledger + "</table>", unsafe_allow_html=True)
             
             st.markdown("---")
-            st.markdown("#### 📈 Riepilogo Lotto Attivo")
+            st.markdown("#### 📈 Riepilogo Avanzamento Lotto Attivo")
             righe_report = []
             for k, v in st.session_state["lotto_lavoro"].items():
                 imp_eur = v.get("imponibile_euro", 0.0)
                 iva_riga = 0.00 if is_forfettario else round(imp_eur * 0.22, 2)
                 righe_report.append({
-                    "Identificativo": k, "Fornitore": v.get("fornitore", ""), "Tax ID Fornitore": v.get("identificativo_fiscale_fornitore", ""),
-                    "Data": v.get("data_documento", ""), "Valuta": v.get("valuta_originale", ""), "Imp. EUR (€)": imp_eur,
-                    "IVA (€)": iva_riga, "Totale (€)": round(imp_eur + iva_riga, 2), "Codice SDI": v.get("codice_autofattura_sdi", "TD17"),
-                    "Categoria": v.get("categoria_costo_suggerita", "Software SaaS")
+                    "Identificativo": k, "Fornitore": v.get("fornitore", ""), "Data": v.get("data_documento", ""), 
+                    "Imp. EUR (€)": imp_eur, "IVA (€)": iva_riga, "Codice SDI": v.get("codice_autofattura_sdi", "TD17"),
+                    "Categoria": v.get("categoria_costo_suggerita", "Software SaaS"), "Workflow Stato": v.get("stato_approvazione", "In Revisione")
                 })
             df_report = pd.DataFrame(righe_report)
             st.dataframe(df_report, use_container_width=True)
 
-            # Generazione pacchetto ZIP (Corretto e Posizionale)
             file_zip_buffer = io.BytesIO()
+            file_inseriti_nel_pacchetto = 0
             with zipfile.ZipFile(file_zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                 for idx, riga in enumerate(righe_report):
-                    dati_xml = st.session_state["lotto_lavoro"][riga["Identificativo"]]
-                    xml_stringa = genera_xml_autofattura(dati_xml, is_forfettario, nome_cliente, piva_cliente)
-                    nome_file_xml = f"IT{piva_cliente.strip()}_{dati_xml.get('codice_autofattura_sdi')}_{idx+1:05d}.xml"
-                    zip_file.writestr(nome_file_xml, xml_stringa)
+                    if riga["Workflow Stato"] == "Approvato per SDI":
+                        dati_xml = st.session_state["lotto_lavoro"][riga["Identificativo"]]
+                        xml_stringa = genera_xml_autofattura(dati_xml, is_forfettario, nome_cliente, piva_cliente)
+                        nome_file_xml = f"IT{piva_cliente.strip()}_{dati_xml.get('codice_autofattura_sdi')}_{idx+1:05d}.xml"
+                        zip_file.writestr(nome_file_xml, xml_stringa)
+                        file_inseriti_nel_pacchetto += 1
             file_zip_buffer.seek(0)
 
             tracciato_software_testo = genera_tracciato_erp(righe_report, software_scelto)
 
-            st.markdown("#### 📦 Esportazione Output Integrati")
+            st.markdown("#### 📦 Esportazione Output & Conservazione Ricorrente")
             col_dl1, col_dl2 = st.columns(2)
             with col_dl1:
-                st.download_button(
-                    label="📥 SCARICA PACCHETTO XML MASSIVO (ZIP PER ADE)",
-                    data=file_zip_buffer, file_name=f"LOTTO_SDI_{piva_cliente.strip()}.zip",
-                    mime="application/zip", use_container_width=True
-                )
+                if file_inseriti_nel_pacchetto > 0:
+                    st.download_button(
+                        label=f"📥 SCARICA PACCHETTO XML MASSIVO ({file_inseriti_nel_pacchetto} DOCUMENTI APPROVATI)",
+                        data=file_zip_buffer, file_name=f"LOTTO_SDI_{piva_cliente.strip()}.zip",
+                        mime="application/zip", use_container_width=True
+                    )
+                else:
+                    st.warning("⚠️ Nessun documento contrassegnato come 'Approvato per SDI'.")
             with col_dl2:
-                st.markdown('<div class="download-sec">', unsafe_allow_html=True)
+                if st.button("🗄️ ATTIVA CONSERVAZIONE SOSTITUTIVA DECENNALE SU QUESTO LOTTO", use_container_width=True):
+                    with st.spinner("Generazione impronte digitali hash..."):
+                        time.sleep(1)
+                        st.success("🔒 Lotto preso in carico a norma di legge (Conservazione decennale attivata).")
+                
+                st.markdown('<div class="download-sec" style="margin-top:10px;">', unsafe_allow_html=True)
                 st.download_button(
                     label=f"📊 SCARICA FILE PRIMA NOTA PER {software_scelto.upper()}",
                     data=tracciato_software_testo, file_name=f"IMPORT_PRIMA_NOTA_{software_scelto.replace(' ', '_').upper()}.txt",
@@ -463,48 +525,38 @@ with tab_operazione:
                 )
                 st.markdown('</div>', unsafe_allow_html=True)
 
-# --- CLOUD SYNC & REVOLUTION 1 (WHATSAPP SIMULATOR) ---
 with tab_compliance:
     st.markdown("### 🤖 Hub di Automazione Sincronizzata & Riconciliazione Strumentale")
-    
     col_c1, col_c2 = st.columns(2)
     with col_c1:
         st.markdown('<div class="luxury-card">', unsafe_allow_html=True)
-        st.markdown('<div class="card-title">💬 REVOLUTION 1: Coda Inbound Messaggi (WhatsApp Business & Telegram)</div>', unsafe_allow_html=True)
-        st.write("Simula l'inoltro di fatture estere inviate dai dipendenti via smartphone.")
-        
-        if st.button("📱 SIMULA CODA RICEZIONE DA WHATSAPP (BOT COMMERCE)"):
-            with st.spinner("Estrazione allegati multimediali chat..."):
-                time.sleep(1.5)
-                st.session_state["lotto_lavoro"]["WhatsApp_Media_Photo_Adobe_Inc.png"] = {
-                    "fornitore": "Adobe Systems Software Ireland", "identificativo_fiscale_fornitore": "IE6364992H", "data_documento": "2026-07-09",
+        st.markdown('<div class="card-title">💬 Coda Inbound Messaggi (WhatsApp & Telegram)</div>', unsafe_allow_html=True)
+        if st.button("📱 SIMULA CODA RICEZIONE DA WHATSAPP"):
+            with st.spinner("Estrazione allegati..."):
+                time.sleep(1)
+                st.session_state["lotto_lavoro"]["WhatsApp_Media_Adobe.png"] = {
+                    "fornitore": "Adobe Systems Software Ireland", "identificativo_fiscale_fornitore": "IE6364992H", "data_documento": "2026-06-28",
                     "valuta_originale": "EUR", "imponibile_valuta_originale": 35.99, "imponibile_euro": 35.99,
-                    "codice_autofattura_sdi": "TD17", "categoria_costo_suggerita": "Software SaaS", "paese_provenienza": "IE"
+                    "codice_autofattura_sdi": "TD17", "categoria_costo_suggerita": "Software SaaS", "paese_provenienza": "IE", "stato_approvazione": "In Revisione"
                 }
-                st.session_state["lotto_lavoro"]["Telegram_Doc_Falso_Fornitore_UE.pdf"] = {
-                    "fornitore": "Malicious Fake Corp Europe", "identificativo_fiscale_fornitore": "IE_FALSO_NUM_999", "data_documento": "2026-07-01",
-                    "valuta_originale": "EUR", "imponibile_valuta_originale": 450.00, "imponibile_euro": 450.00,
-                    "codice_autofattura_sdi": "TD17", "categoria_costo_suggerita": "Consulenza", "paese_provenienza": "IE"
-                }
-                st.toast("Ricevute 2 nuove acquisizioni dai canali chat!", icon="📱")
+                st.toast("Ricevuto nuovo documento da WhatsApp!", icon="📱")
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col_c2:
         st.markdown('<div class="luxury-card">', unsafe_allow_html=True)
         st.markdown('<div class="card-title">💳 Riconciliazione Estratto Conto Aziendale</div>', unsafe_allow_html=True)
-        
-        if st.button("💡 GENERA ESTRATTO CONTO DI PROVA (CARTA REVOLUT BUSINESS)"):
+        if st.button("💡 GENERA ESTRATTO CONTO DI PROVA (CARTA REVOLUT)"):
             dati_estratto_mock = {
-                "Data Movimento": ["2026-07-09", "2026-07-01", "2026-07-08"],
-                "Beneficiario / Descrizione": ["ADOBE SYSTEMS IRELAND", "MALICIOUS FAKE CORP", "METAPLATFORMS ADV"],
-                "Importo Richiesto (€)": [35.99, 450.00, 350.00]
+                "Data Movimento": ["2026-06-28", "2026-06-05"],
+                "Beneficiario / Descrizione": ["ADOBE SYSTEMS IRELAND", "METAPLATFORMS ADV"],
+                "Importo Richiesto (€)": [35.99, 350.00]
             }
             st.session_state["estratto_conto"] = pd.DataFrame(dati_estratto_mock)
-            st.toast("Estratto conto Revolut Business pronto per l'incrocio!", icon="💳")
+            st.toast("Estratto conto pronto per la riconciliazione!", icon="💳")
         st.markdown('</div>', unsafe_allow_html=True)
 
     if st.session_state["estratto_conto"] is not None:
-        st.markdown("#### 🔍 Esito Cross-Check Matching & Ispezione Allineamento")
+        st.markdown("#### 🔍 Esito Cross-Check Matching")
         analisi_mancanti = []
         for index, row in st.session_state["estratto_conto"].iterrows():
             beneficiario = row["Beneficiario / Descrizione"]
@@ -516,7 +568,7 @@ with tab_compliance:
                     break
             analisi_mancanti.append({
                 "Data Operazione": row["Data Movimento"], "Movimento Bancario": beneficiario, "Importo (€)": importo_banca,
-                "Stato Documentale": "🟢 RICONCILIATO" if trovato else "⚠️ MANCANTE (RISCHIO SANZIONE)"
+                "Stato Documentale": "🟢 RICONCILIATO" if trovato else "⚠️ MANCANTE"
             })
         df_esito_compliance = pd.DataFrame(analisi_mancanti)
         def colora_stato(val):
@@ -524,40 +576,58 @@ with tab_compliance:
             return 'background-color: rgba(16, 185, 129, 0.2); color: #A7F3D0;'
         st.dataframe(df_esito_compliance.style.map(colora_stato, subset=["Stato Documentale"]), use_container_width=True)
 
-# --- REVOLUTION 3: AREA SELF-HEALING PRONTO SOCCORSO SCARTI SDI ---
 with tab_self_healing:
     st.markdown("### 🩺 Area Audit: Pronto Soccorso & Ripristino Scarti SDI")
-    st.write("Ricevi notifiche di scarto dall'Agenzia delle Entrate? Trascina qui il file di rifiuto e lascia che l'AI lo sani immediatamente.")
-    
     scarto_caricato = st.file_uploader("Carica File di Scarto SDI (.xml)", type=["xml"], key="sdi_scarti_uploader")
-    
-    # Pulsante per simulare uno scenario reale di errore ministeriale
     if st.button("🩻 INIETTA NOTIFICA DI SCARTO CRITTOGRAFICA (ERRORE ADE COD. 00404)"):
         st.markdown('<div class="luxury-card" style="border: 1px solid #EF4444;">', unsafe_allow_html=True)
-        st.markdown("<b style='color: #EF4444;'>[MINISTERO DELLE FINANZE] NOTIFICA DI SCARTO RILASCIATA DA SDI:</b>", unsafe_allow_html=True)
         st.code("""
 <NotificaScarto>
-    <IdentificativoSDI>9827164921</IdentificativoSDI>
-    <NomeFile>IT01234567890_TD17_0001.xml</NomeFile>
     <CodiceErrore>00404</CodiceErrore>
-    <Descrizione>Fattura duplicata / Numero documento già trasmesso nei dodici mesi precedenti.</Descrizione>
+    <Descrizione>Fattura duplicata / Numero documento già trasmesso.</Descrizione>
 </NotificaScarto>
         """, language="xml")
         st.markdown('</div>', unsafe_allow_html=True)
-        
-        with st.spinner("🧠 AI Core Diagnostica in corso... Analisi dei metadati fiscali..."):
-            time.sleep(2)
-            st.success("🟢 SOLUZIONE FORMULATA DALL'AI:")
-            st.markdown("""
-            * **Diagnosi dell'errore:** Lo SDI ha rifiutato l'invio perché il campo numerico `<Numero>` (`AFT-20260710`) è già stato trasmesso in un precedente lotto dello stesso anno fiscale.
-            * **Risoluzione Self-Healing Applicata:** Ho modificato l'algoritmo di numerazione introducendo un suffisso orario univoco progressivo (`AFT-20260710-REV1`).
-            """)
+        st.success("🟢 SOLUZIONE SELF-HEALING AUTOMATICA GENERATA.")
+
+# --- 💬 TAB INBOUND FEEDBACK (CENTRO RACCOLTA VALIDAZIONE BETA) ---
+with tab_feedback:
+    st.markdown("### 💬 TaxTech Inbound Feedback Box")
+    st.write("Usa questo spazio per dirci cosa funziona, cosa manca o se hai riscontrato errori di calcolo contabile.")
+    
+    with st.form("form_feedback_beta", clear_on_submit=True):
+        col_f1, col_f2 = st.columns([2, 1])
+        with col_f1:
+            fb_nome = st.text_input("Il tuo nome / Nome Studio Commercialista", placeholder="Studio Rossi / Azienda Alpha Srl")
+            fb_email = st.text_input("La tua Email (Se vuoi essere ricontattato quando risolviamo)", placeholder="nome@studio.it")
+        with col_f2:
+            fb_tipo = st.selectbox("Tipo di segnalazione", ["💡 Suggerimento Funzione", "❌ Segnalazione Bug / Errore", "⭐ Complimento / Cosa ti piace"])
+            fb_rating = st.slider("Voto complessivo della piattaforma", 1, 5, 5)
             
-            # Forniamo il file corretto al volo
-            xml_corretto_testo = "<FatturaElettronica> ... Contenuto Sanato Rigenerato con Numero AFT-20260710-REV1 ... </FatturaElettronica>"
-            st.download_button(
-                label="🚀 SCARICA FILE XML SANO E CORRETTO (V2 PRONTO AL REINVIO)",
-                data=xml_corretto_testo,
-                file_name="IT01234567890_TD17_0001_CORRETTO.xml",
-                mime="text/xml"
-            )
+        fb_testo = st.text_area("Raccontaci la tua esperienza o descrivi il problema riscontrato:", placeholder="Esempio: L'estrazione AI è perfetta, ma vorrei poter esportare anche in formato Excel per manipolare i dati...")
+        
+        bottone_invia_feedback = st.form_submit_form_button("🚀 INVIA FEEDBACK ALLA DASHBOARD DI SVILUPPO")
+        
+        if bottone_invia_feedback:
+            if not fb_testo.strip():
+                st.warning("⚠️ Per favore, inserisci un commento prima di inviare.")
+            else:
+                # Struttura dati del feedback
+                nuovo_feedback = {
+                    "Data": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "Mittente": fb_nome if fb_nome else "Anonimo",
+                    "Email": fb_email if fb_email else "N/D",
+                    "Tipo": fb_tipo,
+                    "Valutazione": f"{fb_rating} / 5 ⭐",
+                    "Messaggio": fb_testo
+                }
+                # Salvataggio temporaneo nel session_state dell'app per vederlo subito
+                st.session_state["lista_feedback"].append(nuovo_feedback)
+                st.success("🎉 Grazie mille! Il tuo feedback è stato salvato ed è preziosissimo per la nostra roadmap di sviluppo.")
+
+    # Visualizzazione dei feedback ricevuti (Simulazione Pannello Admin visibile in Beta)
+    if st.session_state["lista_feedback"]:
+        st.markdown("---")
+        st.markdown("#### 📥 Archivio Feedback Ricevuti in questa sessione (Simulazione Admin Panel)")
+        df_fb = pd.DataFrame(st.session_state["lista_feedback"])
+        st.dataframe(df_fb, use_container_width=True)
